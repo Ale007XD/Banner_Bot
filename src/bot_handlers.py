@@ -45,8 +45,8 @@ async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         if not (MIN_DIMENSION <= height <= MAX_DIMENSION):
             raise ValueError
         context.user_data['height'] = height
-        reply_keyboard = [[color] for color in COLORS.keys()]
-        await update.message.reply_text(
+        reply_keyboard = [[f"{details['emoji']} {name}"] for name, details in COLORS.items()]
+            await update.message.reply_text(
             f"Высота: {height} мм. Теперь выбери цвет фона.",
             reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
         )
