@@ -94,7 +94,7 @@ def create_preview_jpeg(data):
     return img_byte_arr
 
 def create_final_pdf(data):
-    """Создает финальный PDF баннер с CMYK цветами и текстом в кривых."""
+    """Создает финальный PDF баннер с CMYK цветами и встроенными шрифтами."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -149,13 +149,13 @@ def create_final_pdf(data):
         line_width = pdfmetrics.stringWidth(line, font_name, font_size)
         x_start = (width_mm * mm - line_width) / 2
         
-        # Создаем текстовый объект, чтобы преобразовать его в контур
+        # Создаем текстовый объект
         text_object = c.beginText()
         text_object.setTextOrigin(x_start, y_start - i * line_height)
         text_object.setFont(font_name, font_size)
         text_object.textLine(line)
 
-        # Рисуем текст как контур (path)
+        # Рисуем текстовый объект, reportlab сам встроит шрифты
         c.drawText(text_object)
 
     c.showPage()
@@ -163,3 +163,47 @@ def create_final_pdf(data):
     
     pdf_buffer.seek(0)
     return pdf_buffer
+
+def create_font_preview_image():
+    """Создает JPEG-изображение с примерами всех доступных шрифтов."""
+    # Получаем список шрифтов из конфига
+    font_items = list(FONTS.items())
+    
+    # Параметры изображения
+    img_width = 800
+    line_height = 80
+    padding = 40
+    img_height = len(font_items) * line_height + 2 * padding
+    bg_color = (240, 240, 240) # Светло-серый фон
+    
+    # Создаем изображение
+    image = Image.new("RGB", (img_width, img_height), bg_color)
+    draw = ImageDraw.Draw(image)
+    
+    # Рисуем примеры текста
+    y = padding
+    for name, path in font_items:
+        try:
+            # Используем имя самого шрифта как пример текста
+            sample_text = name
+            font_size = 40
+            font = ImageFont.truetype(path, font_size)
+            
+            # Центрируем текст по вертикали внутри его строки
+            text_y = y + (line_height - font_size) / 2
+            
+            draw.text(
+                (padding, text_y), 
+                sample_text, 
+                font=font, 
+                fill=(0, 0, 0) # Черный текст
+            )
+            y += line_height
+        except Exception as e:
+            print(f"Не удалось загрузить шрифт {name}: {e}")
+
+    # Сохраняем в байтовый поток
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='JPEG', quality=95)
+    img_byte_arr.seek(0)
+    return img_byte_arr```
