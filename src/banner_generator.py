@@ -156,7 +156,7 @@ def create_final_pdf(data):
         text_object.textLine(line)
 
         # Рисуем текст как контур (path)
-        c.drawText(text_object, B_OUTLINE=1)
+        c.drawText(text_object)
 
     c.showPage()
     c.save()
