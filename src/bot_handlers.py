@@ -189,12 +189,23 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.clear()
     return ConversationHandler.END
 
+# src/bot_handlers.py
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущий диалог."""
     query = update.callback_query
     if query:
         await query.answer()
-        await query.edit_message_text("Действие отменено.")
+        # ИЗМЕНЕНИЕ: Пытаемся отредактировать подпись. 
+        # Если не получается (например, сообщение было удалено), просто игнорируем ошибку.
+        try:
+            await query.edit_message_caption(caption="Действие отменено.")
+        except telegram.error.BadRequest as e:
+            # Игнорируем ошибку "message is not modified", если пользователь нажал дважды
+            if "not modified" not in str(e):
+                logger.warning(f"Не удалось отредактировать сообщение при отмене: {e}")
+                # В качестве запасного варианта можно удалить сообщение с кнопками
+                await query.delete_message()
     else:
         await update.message.reply_text(
             "Действие отменено. Чтобы начать заново, введите /start.",
