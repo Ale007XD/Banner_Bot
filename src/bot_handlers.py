@@ -160,7 +160,9 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
     """Колбэк для кнопки 'Да'. Генерирует и отправляет PDF."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(text="⏳ Создаю финальный PDF-файл. Это может занять немного времени...")
+    
+    # ИЗМЕНЕНИЕ: Используем edit_message_caption, так как работаем с сообщением-фото
+    await query.edit_message_caption(caption="⏳ Создаю финальный PDF-файл. Это может занять немного времени...")
 
     try:
         pdf_file = create_final_pdf(context.user_data)
@@ -170,16 +172,18 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
             chat_id=TELEGRAM_CHANNEL_ID,
             document=pdf_file,
             filename=filename,
-            caption=f"Новый баннер готов! Заказ от пользователя @{update.effective_user.username}"
+            caption=f"Новый баннер готов! Заказ от пользователя @{update.effective_user.username or update.effective_user.id}"
         )
         
-        await query.edit_message_text(
-            text="✅ Готово! Твой баннер сгенерирован и отправлен в наш канал."
+        # ИЗМЕНЕНИЕ: Используем edit_message_caption
+        await query.edit_message_caption(
+            caption="✅ Готово! Твой баннер сгенерирован и отправлен в наш канал."
         )
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
-        await query.edit_message_text(
-            text="❌ Произошла ошибка при создании PDF. Пожалуйста, попробуйте снова. /start"
+        # ИЗМЕНЕНИЕ: Используем edit_message_caption
+        await query.edit_message_caption(
+            caption=f"❌ Произошла ошибка при создании PDF: {e}. Пожалуйста, попробуйте снова. /start"
         )
         
     context.user_data.clear()
