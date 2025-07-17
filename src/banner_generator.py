@@ -29,8 +29,8 @@ def _calculate_adaptive_font_size(draw, text_lines, font_path, safe_zone_px):
         
         for i, line in enumerate(text_lines):
             bbox = draw.textbbox((0, 0), line, font=font)
-            line_width = bbox[2] - bbox[0]
-            line_height = bbox[3] - bbox[1]
+            line_width = bbox - bbox
+            line_height = bbox - bbox
             
             if line_width > max_text_width:
                 max_text_width = line_width
@@ -75,14 +75,14 @@ def create_preview_jpeg(data):
     
     # Центрируем блок текста
     line_spacing = font_size * 0.2
-    total_text_height = sum(draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] for line in text_lines) + line_spacing * (len(text_lines) - 1)
+    total_text_height = sum(draw.textbbox((0, 0), line, font=font) - draw.textbbox((0, 0), line, font=font) for line in text_lines) + line_spacing * (len(text_lines) - 1)
     
     y = (height_px - total_text_height) / 2
 
     for line in text_lines:
         bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox[2] - bbox[0]
-        line_height = bbox[3] - bbox[1]
+        line_width = bbox - bbox
+        line_height = bbox - bbox
         x = (width_px - line_width) / 2
         draw.text((x, y), line, font=font, fill=text_color_rgb)
         y += line_height + line_spacing
@@ -166,44 +166,37 @@ def create_final_pdf(data):
 
 def create_font_preview_image():
     """Создает JPEG-изображение с примерами всех доступных шрифтов."""
-    # Получаем список шрифтов из конфига
     font_items = list(FONTS.items())
     
-    # Параметры изображения
     img_width = 800
     line_height = 80
     padding = 40
     img_height = len(font_items) * line_height + 2 * padding
-    bg_color = (240, 240, 240) # Светло-серый фон
+    bg_color = (240, 240, 240)
     
-    # Создаем изображение
     image = Image.new("RGB", (img_width, img_height), bg_color)
     draw = ImageDraw.Draw(image)
     
-    # Рисуем примеры текста
     y = padding
     for name, path in font_items:
         try:
-            # Используем имя самого шрифта как пример текста
             sample_text = name
             font_size = 40
             font = ImageFont.truetype(path, font_size)
             
-            # Центрируем текст по вертикали внутри его строки
             text_y = y + (line_height - font_size) / 2
             
             draw.text(
                 (padding, text_y), 
                 sample_text, 
                 font=font, 
-                fill=(0, 0, 0) # Черный текст
+                fill=(0, 0, 0)
             )
             y += line_height
         except Exception as e:
             print(f"Не удалось загрузить шрифт {name}: {e}")
 
-    # Сохраняем в байтовый поток
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=95)
     img_byte_arr.seek(0)
-    return img_byte_arr```
+    return img_byte_arr
