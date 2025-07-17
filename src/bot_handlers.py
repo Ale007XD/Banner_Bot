@@ -3,7 +3,7 @@ import telegram
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from .config import *
-from .banner_generator import create_preview_jpeg, create_final_pdf
+from .banner_generator import create_preview_jpeg, create_final_pdf, create_font_preview_image
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -45,8 +45,10 @@ async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         if not (MIN_DIMENSION <= height <= MAX_DIMENSION):
             raise ValueError
         context.user_data['height'] = height
+        
         reply_keyboard = [[f"{details['emoji']} {name}"] for name, details in COLORS.items()]
-            await update.message.reply_text(
+
+        await update.message.reply_text(
             f"Высота: {height} мм. Теперь выбери цвет фона.",
             reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
         )
@@ -59,10 +61,16 @@ async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def get_bg_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает цвет фона, запрашивает количество строк."""
-    color = update.message.text
+    raw_color_text = update.message.text
+    try:
+        color = raw_color_text.split(' ', 1)[1]
+    except IndexError:
+        color = raw_color_text 
+
     if color not in COLORS:
         await update.message.reply_text("Пожалуйста, выбери цвет из предложенных вариантов.")
         return BG_COLOR
+    
     context.user_data['bg_color'] = color
     reply_keyboard = [["1", "2", "3", "4"]]
     await update.message.reply_text(
@@ -99,10 +107,10 @@ async def get_text_lines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if current_line < total_lines:
         context.user_data['current_line'] += 1
-        await update.message.reply_text(f"Отлично. Теперь введи текст для строки {current_line + 1}:")
+        await update.message.reply_text(f"Отлично. Теперь введи текст для строки {current_line}:")
         return TEXT_LINES
     else:
-        reply_keyboard = [[color] for color in COLORS.keys()]
+        reply_keyboard = [[f"{details['emoji']} {name}"] for name, details in COLORS.items()]
         await update.message.reply_text(
             "Весь текст получен. Теперь выбери цвет текста.",
             reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
@@ -110,15 +118,36 @@ async def get_text_lines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return TEXT_COLOR
 
 async def get_text_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получает цвет текста и запрашивает шрифт."""
-    color = update.message.text
+    """Получает цвет текста, показывает превью шрифтов и запрашивает выбор."""
+    raw_color_text = update.message.text
+    try:
+        color = raw_color_text.split(' ', 1)[1]
+    except IndexError:
+        color = raw_color_text
+
     if color not in COLORS:
         await update.message.reply_text("Пожалуйста, выбери цвет из предложенных вариантов.")
         return TEXT_COLOR
+    
     context.user_data['text_color'] = color
+    
+    await update.message.reply_text(
+        "Отлично! Готовлю превью доступных шрифтов...", 
+        reply_markup=ReplyKeyboardRemove()
+    )
+    try:
+        font_preview = create_font_preview_image()
+        await update.message.reply_photo(
+            photo=font_preview,
+            caption="Вот так выглядят доступные шрифты."
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при создании превью шрифтов: {e}", exc_info=True)
+        await update.message.reply_text("Не удалось создать превью шрифтов, но вы все равно можете выбрать их по названию.")
+
     reply_keyboard = [[font] for font in FONTS.keys()]
     await update.message.reply_text(
-        f"Цвет текста: {color}. Выбери шрифт:",
+        f"Теперь выбери шрифт:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
     )
     return FONT_CHOICE
@@ -161,7 +190,6 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    # ИЗМЕНЕНИЕ: Используем edit_message_caption, так как работаем с сообщением-фото
     await query.edit_message_caption(caption="⏳ Создаю финальный PDF-файл. Это может занять немного времени...")
 
     try:
@@ -175,36 +203,28 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
             caption=f"Новый баннер готов! Заказ от пользователя @{update.effective_user.username or update.effective_user.id}"
         )
         
-        # ИЗМЕНЕНИЕ: Используем edit_message_caption
         await query.edit_message_caption(
             caption="✅ Готово! Твой баннер сгенерирован и отправлен в наш канал."
         )
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
-        # ИЗМЕНЕНИЕ: Используем edit_message_caption
         await query.edit_message_caption(
-            caption=f"❌ Произошла ошибка при создании PDF: {e}. Пожалуйста, попробуйте снова. /start"
+            caption=f"❌ Произошла ошибка при создании PDF. Пожалуйста, попробуйте снова. /start"
         )
         
     context.user_data.clear()
     return ConversationHandler.END
-
-# src/bot_handlers.py
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущий диалог."""
     query = update.callback_query
     if query:
         await query.answer()
-        # ИЗМЕНЕНИЕ: Пытаемся отредактировать подпись. 
-        # Если не получается (например, сообщение было удалено), просто игнорируем ошибку.
         try:
             await query.edit_message_caption(caption="Действие отменено.")
         except telegram.error.BadRequest as e:
-            # Игнорируем ошибку "message is not modified", если пользователь нажал дважды
-            if "not modified" not in str(e):
-                logger.warning(f"Не удалось отредактировать сообщение при отмене: {e}")
-                # В качестве запасного варианта можно удалить сообщение с кнопками
+            if "message is not modified" not in str(e).lower():
+                logger.warning(f"Не удалось отредактировать сообщение при отмене, удаляю: {e}")
                 await query.delete_message()
     else:
         await update.message.reply_text(
