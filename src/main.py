@@ -18,18 +18,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main() -> None:
-    """Запуск бота с новой структурой диалога."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-    # Используем константу для команды в меню
     application.bot.set_my_commands([
         ('start', BTN_RESTART)
     ])
 
     conv_handler = ConversationHandler(
-        # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-        # Добавляем обработчик для кнопки перезапуска
         entry_points=[
             CommandHandler("start", start),
             MessageHandler(Regex(f'^{BTN_RESTART}$'), start)
@@ -42,6 +37,8 @@ def main() -> None:
                 MessageHandler(Regex(f'^{BTN_TEXT_COLOR}$'), ask_for_color),
                 MessageHandler(Regex(f'^{BTN_FONT}$'), ask_for_font),
                 MessageHandler(Regex(f'^{BTN_TEXT_LINES}$'), ask_for_line_count),
+                # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем новый обработчик ---
+                MessageHandler(Regex(f'^{BTN_POSTPRINT}$'), ask_for_postprint),
                 MessageHandler(Regex(f'^{BTN_GENERATE}$'), generate_banner),
             ],
             AWAIT_WIDTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_width)],
@@ -50,6 +47,8 @@ def main() -> None:
             AWAIT_FONT_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_font)],
             AWAIT_LINE_COUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_line_count_and_ask_text)],
             AWAIT_TEXT_LINES: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_text_and_continue)],
+            # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем новое состояние ---
+            AWAIT_POSTPRINT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_postprint)],
             PREVIEW_CONFIRM: [
                 CallbackQueryHandler(generate_pdf_callback, pattern="^generate_pdf$"),
                 CallbackQueryHandler(back_to_menu_callback, pattern="^cancel_generation$"),
