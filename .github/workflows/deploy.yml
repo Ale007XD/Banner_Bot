@@ -1,43 +1,46 @@
-# Название нашего пайплайна
 name: Deploy Telegram Bot to VPS
 
-# Триггер: запускать этот пайплайн при каждом push в ветку main
 on:
   push:
     branches:
       - main
 
-# Задачи, которые нужно выполнить
 jobs:
   deploy:
-    # Использовать свежую виртуальную машину Ubuntu для выполнения задачи
     runs-on: ubuntu-latest
 
-    # Шаги выполнения
     steps:
-      # 1. Шаг: Подключение к VPS по SSH и выполнение команд
-      - name: Deploy to VPS
-        # Используем готовый экшен для SSH-подключения
-        uses: appleboy/ssh-action@v1.0.3
+      # 1. Шаг: Скачиваем исходный код репозитория на виртуальную машину Actions
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Шаг: Безопасно создаем .env файл на виртуальной машине Actions
+      - name: Create .env file
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
+          echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
+      
+      # 3. Шаг: Копируем все файлы на VPS
+      # Используем другой готовый экшен, который отлично подходит для этого - scp
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
         with:
-          # Берем данные для подключения из секретов GitHub, созданных ранее
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          source: "."  # Копируем всё из текущей директории (.)
+          target: "~/pdf_banner_bot" # В какую папку на сервере копировать
           
-          # Скрипт, который будет выполняться на VPS
+      # 4. Шаг: Подключаемся к VPS и запускаем Docker
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             # Переходим в директорию проекта
-            cd ~/banner_bot
+            cd ~/pdf_banner_bot
             
-            # Скачиваем последние изменения из ветки main
-            git pull origin main
-            
-            # Безопасно создаем .env файл из секретов GitHub
-            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
-            echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
-            
-            # Пересобираем и перезапускаем Docker Compose в фоновом режиме
-            # --build: пересобрать образ, если Dockerfile изменился
-            # -d: запустить в фоновом режиме (detached)
+            # Пересобираем и перезапускаем Docker Compose
             docker-compose up --build -d
