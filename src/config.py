@@ -15,10 +15,11 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         "Необходимо задать переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID в файле .env"
     )
 
-# Добавляем новое состояние в конец
+# Добавляем новые состояния в конец
 (MAIN_MENU, AWAIT_WIDTH, AWAIT_HEIGHT, AWAIT_BG_COLOR, 
  AWAIT_LINE_COUNT, AWAIT_TEXT_LINES, AWAIT_TEXT_COLOR, 
- AWAIT_FONT_CHOICE, PREVIEW_CONFIRM, AWAIT_POSTPRINT) = range(10) # <-- Увеличили range до 10
+ AWAIT_FONT_CHOICE, PREVIEW_CONFIRM, AWAIT_POSTPRINT,
+ AWAIT_LINE_CHOICE_FOR_EDIT, AWAIT_NEW_TEXT) = range(12) # <-- Увеличили range до 12
 
 # Тексты для кнопок, чтобы избежать "магических строк" в коде
 BTN_WIDTH = "📏 Ширина"
@@ -31,6 +32,8 @@ BTN_FONT = "✒️ Шрифт"
 BTN_GENERATE = "🚀 Сгенерировать баннер"
 BTN_CANCEL = "❌ Отмена"
 BTN_POSTPRINT = "🔩 Постпечать"
+BTN_EDIT_TEXT = "✍️ Редактировать текст"
+BTN_BACK = "↩️ Назад"
 
 # Параметры для баннера
 SAFE_ZONE_MM = 30
