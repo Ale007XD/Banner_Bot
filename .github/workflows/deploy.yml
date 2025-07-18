@@ -1,0 +1,43 @@
+# Название нашего пайплайна
+name: Deploy Telegram Bot to VPS
+
+# Триггер: запускать этот пайплайн при каждом push в ветку main
+on:
+  push:
+    branches:
+      - main
+
+# Задачи, которые нужно выполнить
+jobs:
+  deploy:
+    # Использовать свежую виртуальную машину Ubuntu для выполнения задачи
+    runs-on: ubuntu-latest
+
+    # Шаги выполнения
+    steps:
+      # 1. Шаг: Подключение к VPS по SSH и выполнение команд
+      - name: Deploy to VPS
+        # Используем готовый экшен для SSH-подключения
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # Берем данные для подключения из секретов GitHub, созданных ранее
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          
+          # Скрипт, который будет выполняться на VPS
+          script: |
+            # Переходим в директорию проекта
+            cd ~/pdf_banner_bot
+            
+            # Скачиваем последние изменения из ветки main
+            git pull origin main
+            
+            # Безопасно создаем .env файл из секретов GitHub
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
+            echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
+            
+            # Пересобираем и перезапускаем Docker Compose в фоновом режиме
+            # --build: пересобрать образ, если Dockerfile изменился
+            # -d: запустить в фоновом режиме (detached)
+            docker-compose up --build -d
