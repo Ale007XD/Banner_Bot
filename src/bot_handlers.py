@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from .config import *
 from .banner_generator import create_preview_jpeg, create_final_pdf, create_font_preview_image
 
+# Включаем логирование для отладки
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
@@ -63,6 +64,7 @@ async def get_bg_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Получает цвет фона, запрашивает количество строк."""
     raw_color_text = update.message.text
     try:
+        # Отделяем эмодзи от названия цвета (например, "🔴 Красный" -> "Красный")
         color = raw_color_text.split(' ', 1)[1]
     except IndexError:
         color = raw_color_text 
@@ -87,7 +89,7 @@ async def get_line_count(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError
         context.user_data['line_count'] = count
         context.user_data['text_lines'] = []
-        context.user_data['current_line'] = 1
+        
         await update.message.reply_text(
             f"Будет {count} строк(и). Введи текст для строки 1:",
             reply_markup=ReplyKeyboardRemove(),
@@ -98,16 +100,16 @@ async def get_line_count(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return LINE_COUNT
 
 async def get_text_lines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получает текст для каждой строки по очереди."""
+    """Получает текст для каждой строки, используя длину списка как счетчик."""
     text = update.message.text
     context.user_data['text_lines'].append(text)
-    
-    current_line = context.user_data['current_line']
+
+    collected_lines = len(context.user_data['text_lines'])
     total_lines = context.user_data['line_count']
 
-    if current_line < total_lines:
-        context.user_data['current_line'] += 1
-        await update.message.reply_text(f"Отлично. Теперь введи текст для строки {current_line}:")
+    if collected_lines < total_lines:
+        next_line_number = collected_lines + 1
+        await update.message.reply_text(f"Отлично. Теперь введи текст для строки {next_line_number}:")
         return TEXT_LINES
     else:
         reply_keyboard = [[f"{details['emoji']} {name}"] for name, details in COLORS.items()]
@@ -221,12 +223,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if query:
         await query.answer()
         try:
+            # Пытаемся отредактировать подпись, так как отмена может быть с сообщения-фото
             await query.edit_message_caption(caption="Действие отменено.")
         except telegram.error.BadRequest as e:
+            # Игнорируем ошибку, если пользователь нажал дважды или сообщение было удалено
             if "message is not modified" not in str(e).lower():
                 logger.warning(f"Не удалось отредактировать сообщение при отмене, удаляю: {e}")
                 await query.delete_message()
     else:
+        # Если отмена пришла как команда /cancel
         await update.message.reply_text(
             "Действие отменено. Чтобы начать заново, введите /start.",
             reply_markup=ReplyKeyboardRemove(),
