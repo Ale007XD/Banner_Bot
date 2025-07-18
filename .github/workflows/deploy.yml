@@ -28,7 +28,7 @@ jobs:
           # Скрипт, который будет выполняться на VPS
           script: |
             # Переходим в директорию проекта
-            cd ~/pdf_banner_bot
+            cd ~/banner_bot
             
             # Скачиваем последние изменения из ветки main
             git pull origin main
