@@ -29,8 +29,9 @@ def _calculate_adaptive_font_size(draw, text_lines, font_path, safe_zone_px):
         
         for i, line in enumerate(text_lines):
             bbox = draw.textbbox((0, 0), line, font=font)
-            line_width = bbox - bbox
-            line_height = bbox - bbox
+            # ИСПРАВЛЕНО: Корректный расчет ширины и высоты
+            line_width = bbox[2] - bbox[0]
+            line_height = bbox[3] - bbox[1]
             
             if line_width > max_text_width:
                 max_text_width = line_width
@@ -52,42 +53,39 @@ def create_preview_jpeg(data):
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
 
-    # Для превью делаем масштаб, чтобы изображение не было гигантским
-    scale = 1.0  # 1 пиксель = 1 мм
+    scale = 1.0
     width_px, height_px = int(width_mm * scale), int(height_mm * scale)
 
     bg_color_rgb = COLORS[bg_color_name]['rgb']
     text_color_rgb = COLORS[text_color_name]['rgb']
     font_path = FONTS[font_name]
 
-    # Создаем изображение
     image = Image.new("RGB", (width_px, height_px), bg_color_rgb)
     draw = ImageDraw.Draw(image)
 
-    # Определяем безопасную зону в пикселях
     safe_zone_px_x = SAFE_ZONE_MM * scale
     safe_zone_px_y = SAFE_ZONE_MM * scale
     safe_width = width_px - 2 * safe_zone_px_x
     safe_height = height_px - 2 * safe_zone_px_y
 
-    # Подбираем шрифт
     font, font_size = _calculate_adaptive_font_size(draw, text_lines, font_path, (safe_width, safe_height))
     
-    # Центрируем блок текста
     line_spacing = font_size * 0.2
-    total_text_height = sum(draw.textbbox((0, 0), line, font=font) - draw.textbbox((0, 0), line, font=font) for line in text_lines) + line_spacing * (len(text_lines) - 1)
+    
+    # ИСПРАВЛЕНО: Корректный расчет общей высоты блока текста
+    line_heights = [draw.textbbox((0,0), line, font=font)[3] - draw.textbbox((0,0), line, font=font)[1] for line in text_lines]
+    total_text_height = sum(line_heights) + line_spacing * (len(text_lines) - 1)
     
     y = (height_px - total_text_height) / 2
 
-    for line in text_lines:
+    for i, line in enumerate(text_lines):
         bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox - bbox
-        line_height = bbox - bbox
+        # ИСПРАВЛЕНО: Корректный расчет ширины
+        line_width = bbox[2] - bbox[0]
         x = (width_px - line_width) / 2
         draw.text((x, y), line, font=font, fill=text_color_rgb)
-        y += line_height + line_spacing
+        y += line_heights[i] + line_spacing
 
-    # Сохраняем в байтовый поток
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=90)
     img_byte_arr.seek(0)
@@ -99,30 +97,24 @@ def create_final_pdf(data):
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
 
-    # Получаем CMYK значения
-    c, m, y, k = COLORS[bg_color_name]['cmyk']
-    bg_color_cmyk = CMYKColor(c/100, m/100, y/100, k/100)
+    c_bg, m_bg, y_bg, k_bg = COLORS[bg_color_name]['cmyk']
+    bg_color_cmyk = CMYKColor(c_bg/100, m_bg/100, y_bg/100, k_bg/100)
     
-    c, m, y, k = COLORS[text_color_name]['cmyk']
-    text_color_cmyk = CMYKColor(c/100, m/100, y/100, k/100)
+    c_text, m_text, y_text, k_text = COLORS[text_color_name]['cmyk']
+    text_color_cmyk = CMYKColor(c_text/100, m_text/100, y_text/100, k_text/100)
     
     pdf_buffer = io.BytesIO()
     
-    # Создаем холст с физическими размерами
     c = canvas.Canvas(pdf_buffer, pagesize=(width_mm * mm, height_mm * mm))
 
-    # Рисуем фон
     c.setFillColor(bg_color_cmyk)
     c.rect(0, 0, width_mm * mm, height_mm * mm, fill=1, stroke=0)
     
-    # Устанавливаем цвет для текста
     c.setFillColor(text_color_cmyk)
 
-    # --- Логика размещения и масштабирования текста для PDF ---
     safe_width = (width_mm - 2 * SAFE_ZONE_MM) * mm
     safe_height = (height_mm - 2 * SAFE_ZONE_MM) * mm
     
-    # Подбираем размер шрифта (аналогично превью, но с использованием reportlab)
     font_size = 300
     line_spacing_ratio = 1.2
     
@@ -140,22 +132,18 @@ def create_final_pdf(data):
     c.setFont(font_name, font_size)
     face = pdfmetrics.getFont(font_name).face
     line_height = (face.ascent - face.descent) / 1000 * font_size * line_spacing_ratio
-    total_text_height = line_height * len(text_lines)
+    total_text_height_final = line_height * (len(text_lines) -1) + (face.ascent - face.descent) / 1000 * font_size
     
-    # Центрируем блок текста
-    y_start = (height_mm * mm + total_text_height) / 2 - (face.ascent / 1000 * font_size)
+    y_start = (height_mm * mm + total_text_height_final) / 2 - (face.ascent / 1000 * font_size)
 
     for i, line in enumerate(text_lines):
         line_width = pdfmetrics.stringWidth(line, font_name, font_size)
         x_start = (width_mm * mm - line_width) / 2
         
-        # Создаем текстовый объект
         text_object = c.beginText()
         text_object.setTextOrigin(x_start, y_start - i * line_height)
         text_object.setFont(font_name, font_size)
         text_object.textLine(line)
-
-        # Рисуем текстовый объект, reportlab сам встроит шрифты
         c.drawText(text_object)
 
     c.showPage()
@@ -184,7 +172,9 @@ def create_font_preview_image():
             font_size = 40
             font = ImageFont.truetype(path, font_size)
             
-            text_y = y + (line_height - font_size) / 2
+            bbox = draw.textbbox((0,0), sample_text, font=font)
+            text_height = bbox[3] - bbox[1]
+            text_y = y + (line_height - text_height) / 2
             
             draw.text(
                 (padding, text_y), 
