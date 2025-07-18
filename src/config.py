@@ -10,6 +10,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # ID канала, куда будут отправляться готовые баннеры
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
     raise ValueError(
         "Необходимо задать переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID в файле .env"
