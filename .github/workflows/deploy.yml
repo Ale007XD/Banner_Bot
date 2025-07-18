@@ -20,22 +20,15 @@ jobs:
           echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
           echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
       
-      # 3. --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-      # Копируем только нужные файлы, чтобы не затереть order_counter.json
+      # 3. Копируем файлы проекта на VPS
       - name: Copy project files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          # Копируем каждый элемент отдельно, а не всю папку целиком
-          source: |
-            src
-            fonts
-            .env
-            Dockerfile
-            docker-compose.yml
-            requirements.txt
+          # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Все файлы в одну строку через запятую ---
+          source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
           target: "~/banner_bot" 
           
       # 4. Подключаемся к VPS и перезапускаем Docker
