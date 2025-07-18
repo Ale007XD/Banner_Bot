@@ -15,8 +15,21 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         "Необходимо задать переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID в файле .env"
     )
 
-# Константы для диалога
-(WIDTH, HEIGHT, BG_COLOR, LINE_COUNT, TEXT_LINES, TEXT_COLOR, FONT_CHOICE, PREVIEW_CONFIRM) = range(8)
+# Константы для нового ConversationHandler
+(MAIN_MENU, AWAIT_WIDTH, AWAIT_HEIGHT, AWAIT_BG_COLOR, 
+ AWAIT_LINE_COUNT, AWAIT_TEXT_LINES, AWAIT_TEXT_COLOR, 
+ AWAIT_FONT_CHOICE, PREVIEW_CONFIRM) = range(9)
+
+# Тексты для кнопок, чтобы избежать "магических строк" в коде
+BTN_WIDTH = "📏 Ширина"
+BTN_HEIGHT = "📏 Высота"
+BTN_BG_COLOR = "🎨 Цвет фона"
+BTN_LINE_COUNT = "🔠 Кол-во строк"
+BTN_TEXT_LINES = "✍️ Текст"
+BTN_TEXT_COLOR = "🎨 Цвет текста"
+BTN_FONT = "✒️ Шрифт"
+BTN_GENERATE = "🚀 Сгенерировать баннер"
+BTN_CANCEL = "❌ Отмена"
 
 # Параметры для баннера
 SAFE_ZONE_MM = 30
