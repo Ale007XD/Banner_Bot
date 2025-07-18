@@ -29,7 +29,7 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           source: "."  # Копируем всё из текущей директории (.)
-          target: "~/pdf_banner_bot" # В какую папку на сервере копировать
+          target: "~/banner_bot" # В какую папку на сервере копировать
           
       # 4. Шаг: Подключаемся к VPS и запускаем Docker
       - name: Deploy on VPS
@@ -40,7 +40,10 @@ jobs:
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             # Переходим в директорию проекта
-            cd ~/pdf_banner_bot
+            cd ~/banner_bot
+            
+            # Сначала останавливаем и удаляем старые контейнеры, чтобы избежать ошибок состояния
+            docker-compose down
             
             # Пересобираем и перезапускаем Docker Compose
             docker-compose up --build -d
