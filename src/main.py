@@ -63,17 +63,4 @@ def main() -> None:
     application.run_polling()
 
 if __name__ == "__main__":
-    main()```
-
-### Что делать дальше
-
-1.  **Внесите** все описанные выше изменения в файлы `src/config.py`, `src/bot_handlers.py` и `src/main.py`.
-2.  **Загрузите** изменения на GitHub:
-    ```bash
-    git add src/config.py src/bot_handlers.py src/main.py
-    git commit -m "feat: Redesign UI to a persistent menu-driven interface"
-    git push origin main
-    ```
-3.  Ваш **GitHub Actions** автоматически развернет новую версию.
-
-После этого ваш бот будет работать с новым, гораздо более удобным и современным интерфейсом.
+    main()
