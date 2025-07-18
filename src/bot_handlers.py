@@ -3,7 +3,6 @@ import telegram
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from .config import *
-# Импортируем наш новый менеджер заказов
 from .order_manager import get_next_order_number
 from .banner_generator import create_preview_jpeg, create_final_pdf, create_font_preview_image
 
@@ -46,8 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await display_menu(update.message, context)
     return MAIN_MENU
 
-# ... (все функции от ask_for_width до generate_banner остаются без изменений) ...
-# (Для краткости я их пропускаю, но в вашем файле они должны быть)
+# ... (все функции от ask_for_width до generate_pdf_callback остаются без изменений) ...
 
 async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):", reply_markup=ReplyKeyboardRemove())
@@ -175,23 +173,14 @@ async def generate_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await display_menu(update.message, context)
         return MAIN_MENU
 
-
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Генерирует PDF, присваивает номер заказа и возвращает в меню."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_caption(caption="⏳ Присваиваю номер заказа и создаю PDF-файл...")
-
     try:
-        # --- ИЗМЕНЕНИЕ: Получаем номер заказа ---
         order_number = get_next_order_number()
-        
         pdf_file = create_final_pdf(context.user_data['config'])
-        
-        # --- ИЗМЕНЕНИЕ: Используем номер заказа в имени файла ---
         filename = f"order_{order_number}.pdf"
-        
-        # --- ИЗМЕНЕНИЕ: Добавляем номер заказа в сообщение на канале ---
         channel_caption = (
             f"Новый заказ №{order_number}\n"
             f"От пользователя: @{update.effective_user.username or update.effective_user.id}"
@@ -202,22 +191,16 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
             filename=filename,
             caption=channel_caption
         )
-        
-        # --- ИЗМЕНЕНИЕ: Сообщаем номер заказа пользователю ---
         await query.edit_message_caption(
             caption=f"✅ Готово! Вашему заказу присвоен номер {order_number}. Баннер отправлен в канал."
         )
-        
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
         await query.edit_message_caption(caption="❌ Произошла ошибка при создании PDF.")
-    
     context.user_data['config'] = {}
     await query.message.reply_text("\nВы можете создать следующий баннер:")
     await display_menu(query.message, context)
-
     return MAIN_MENU
-
 
 async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -228,6 +211,12 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return MAIN_MENU
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Действие отменено. Чтобы начать заново, отправьте /start.", reply_markup=ReplyKeyboardRemove())
+    """Полностью отменяет диалог и предлагает начать заново с помощью кнопки."""
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    keyboard = [[BTN_RESTART]]
+    await update.message.reply_text(
+        "Действие отменено.",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    )
     context.user_data.clear()
     return ConversationHandler.END
