@@ -1,9 +1,11 @@
 import logging
+import os
 import telegram
+from functools import wraps
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from .config import *
-from .order_manager import get_next_order_number
+from .order_manager import get_next_order_number, get_stats
 from .banner_generator import create_preview_jpeg, create_final_pdf, create_font_preview_image
 
 logging.basicConfig(
@@ -12,13 +14,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# --- Вспомогательная функция для создания меню ---
+# --- ДЕКОРАТОР ДЛЯ ЗАЩИТЫ АДМИН-КОМАНД ---
+def admin_only(func):
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if str(user_id) != ADMIN_TELEGRAM_ID:
+            await update.message.reply_text("⛔️ У вас нет прав для выполнения этой команды.")
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapped
 
+
+# --- АДМИН-КОМАНДЫ ---
+@admin_only
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет статистику администратору."""
+    stats_text = get_stats()
+    await update.message.reply_text(stats_text, parse_mode='MarkdownV2')
+
+@admin_only
+async def last_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет последний сгенерированный PDF администратору."""
+    last_order_path = context.bot_data.get('last_order_path')
+    if last_order_path and os.path.exists(last_order_path):
+        await update.message.reply_document(
+            document=open(last_order_path, 'rb'),
+            caption=f"Последний заказ: `{os.path.basename(last_order_path)}`",
+            parse_mode='MarkdownV2'
+        )
+    else:
+        await update.message.reply_text("Еще не было создано ни одного заказа с момента последнего перезапуска.")
+
+
+# --- Основная логика бота (остается прежней, но с одним изменением в generate_pdf_callback) ---
+
+# ... (все функции от display_menu до generate_banner остаются БЕЗ ИЗМЕНЕНИЙ) ...
+# ... (пропускаю их для краткости) ...
 async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message if hasattr(update, 'message') else update
     config = context.user_data.get('config', {})
-    
-    # ... (статус-текст остается без изменений) ...
     status_text = ["<b>Текущие настройки вашего баннера:</b>"]
     if config.get('width'): status_text.append(f"🟢 <b>{BTN_WIDTH}:</b> {config['width']} мм")
     else: status_text.append(f"🔴 <b>{BTN_WIDTH}:</b> не задана")
@@ -36,29 +71,14 @@ async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else: status_text.append(f"🔴 <b>{BTN_TEXT_LINES}:</b> не задан")
     if config.get('postprint'): status_text.append(f"🟢 <b>{BTN_POSTPRINT}:</b> {config['postprint']}")
     else: status_text.append(f"🔴 <b>{BTN_POSTPRINT}:</b> не задана")
-    
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Динамическая клавиатура ---
-    buttons = [
-        [BTN_WIDTH, BTN_HEIGHT],
-        [BTN_BG_COLOR, BTN_TEXT_COLOR],
-        [BTN_FONT, BTN_POSTPRINT], # Поменяли местами для лучшей группировки
-    ]
-    # Добавляем кнопки для работы с текстом отдельно
+    buttons = [[BTN_WIDTH, BTN_HEIGHT], [BTN_BG_COLOR, BTN_TEXT_COLOR], [BTN_FONT, BTN_POSTPRINT]]
     text_buttons = [BTN_TEXT_LINES]
-    if config.get('text_lines'):
-        text_buttons.append(BTN_EDIT_TEXT)
+    if config.get('text_lines'): text_buttons.append(BTN_EDIT_TEXT)
     buttons.append(text_buttons)
-    
     buttons.append([BTN_GENERATE])
     buttons.append([BTN_CANCEL])
-
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await message.reply_text("\n".join(status_text), reply_markup=keyboard, parse_mode='HTML')
-
-
-# --- Функции диалога ---
-# ... (start и все функции до ask_for_line_count остаются без изменений) ...
-# ... (здесь я их пропускаю для краткости) ...
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await update.message.reply_text("Привет! Давайте создадим ваш баннер. Используйте кнопки ниже для настройки.")
@@ -157,54 +177,39 @@ async def save_text_and_continue(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("✅ Весь текст сохранен!")
         await display_menu(update.message, context)
         return MAIN_MENU
-
-# --- Новые функции для редактирования текста ---
 async def ask_which_line_to_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Спрашивает, какую строку редактировать."""
     text_lines = context.user_data.get('config', {}).get('text_lines', [])
     if not text_lines:
         await update.message.reply_text("Сначала введите текст.")
         await display_menu(update.message, context)
         return MAIN_MENU
-        
     buttons = [[f"Строка {i+1}: «{line[:20]}...»"] for i, line in enumerate(text_lines)]
     buttons.append([BTN_BACK])
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await update.message.reply_text("Какую строку вы хотите изменить?", reply_markup=keyboard)
     return AWAIT_LINE_CHOICE_FOR_EDIT
-
 async def ask_for_new_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Запрашивает новый текст для выбранной строки."""
     try:
-        # Извлекаем номер строки из текста кнопки
         line_number_str = update.message.text.split(':')[0].split(' ')[1]
         line_index = int(line_number_str) - 1
-        # Сохраняем индекс для следующего шага
         context.user_data['edit_line_index'] = line_index
         await update.message.reply_text(f"Введите новый текст для строки {line_number_str}:", reply_markup=ReplyKeyboardRemove())
         return AWAIT_NEW_TEXT
     except (ValueError, IndexError):
         await update.message.reply_text("❌ Пожалуйста, выберите строку из предложенных кнопок.")
         return AWAIT_LINE_CHOICE_FOR_EDIT
-
 async def save_edited_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет измененный текст."""
     try:
         line_index = context.user_data.pop('edit_line_index')
         context.user_data['config']['text_lines'][line_index] = update.message.text
         await update.message.reply_text("✅ Строка успешно изменена!")
     except (KeyError, IndexError):
         await update.message.reply_text("❌ Произошла ошибка. Попробуйте снова.")
-
     await display_menu(update.message, context)
     return MAIN_MENU
-
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Возвращает в главное меню из любого подменю."""
     await display_menu(update.message, context)
     return MAIN_MENU
-
-# ... (остальные функции остаются без изменений) ...
 async def ask_for_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     buttons = [[key] for key in POSTPRINT_OPTIONS.keys()]
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
@@ -238,16 +243,30 @@ async def generate_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Произошла ошибка при создании превью. Попробуйте снова.")
         await display_menu(update.message, context)
         return MAIN_MENU
+
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     await query.edit_message_caption(caption="⏳ Присваиваю номер заказа и создаю PDF-файл...")
+
     try:
         config = context.user_data['config']
         order_number = get_next_order_number()
-        pdf_file = create_final_pdf(config)
+        pdf_file_data = create_final_pdf(config)
+        
         postprint_code = POSTPRINT_OPTIONS.get(config['postprint'], "XX")
         filename = f"order_{order_number}_{postprint_code}.pdf"
+
+        # --- ИЗМЕНЕНИЕ: Сохраняем PDF на диск для админ-команды ---
+        orders_dir = "orders"
+        os.makedirs(orders_dir, exist_ok=True)
+        file_path = os.path.join(orders_dir, filename)
+        with open(file_path, 'wb') as f:
+            f.write(pdf_file_data.getbuffer())
+        
+        # Запоминаем путь к последнему файлу
+        context.bot_data['last_order_path'] = file_path
+        
         channel_caption = (
             f"✅ Новый заказ №{order_number}\n\n"
             f"👤 От пользователя: @{update.effective_user.username or update.effective_user.id}\n"
@@ -255,21 +274,23 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await context.bot.send_document(
             chat_id=TELEGRAM_CHANNEL_ID,
-            document=pdf_file,
+            document=pdf_file_data,
             filename=filename,
             caption=channel_caption,
             parse_mode='HTML'
         )
-        await query.edit_message_caption(
-            caption=f"✅ Готово! Вашему заказу присвоен номер {order_number}. Баннер отправлен в канал."
-        )
+        
+        await query.edit_message_caption(caption=f"✅ Готово! Вашему заказу присвоен номер {order_number}. Баннер отправлен в канал.")
+        
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
         await query.edit_message_caption(caption="❌ Произошла ошибка при создании PDF.")
+    
     context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await query.message.reply_text("\nВы можете создать следующий баннер:")
     await display_menu(query.message, context)
     return MAIN_MENU
+
 async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -277,11 +298,9 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await update.effective_message.reply_text("Генерация отменена. Вы вернулись в главное меню.")
     await display_menu(update.effective_message, context)
     return MAIN_MENU
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [[BTN_RESTART]]
-    await update.message.reply_text(
-        "Действие отменено.",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-    )
+    await update.message.reply_text("Действие отменено.", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
     context.user_data.clear()
     return ConversationHandler.END
