@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отображает главное меню с текущими настройками и кнопками."""
+    # Используем message-объект из update, чтобы функция была универсальной
+    message = update.message if hasattr(update, 'message') else update
+    
     config = context.user_data.get('config', {})
 
     # Формируем текст с текущими настройками
@@ -27,7 +30,7 @@ async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<b>{BTN_FONT}:</b> {config.get('font', 'не задан')}",
     ]
     
-    if 'text_lines' in config:
+    if 'text_lines' in config and config['text_lines']:
         text_preview = ' | '.join(config['text_lines'])
         status_text.append(f"<b>{BTN_TEXT_LINES}:</b> <i>«{text_preview}»</i>")
     else:
@@ -43,7 +46,7 @@ async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
-    await update.message.reply_text(
+    await message.reply_text(
         "\n".join(status_text),
         reply_markup=keyboard,
         parse_mode='HTML'
@@ -56,7 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает диалог и показывает главное меню."""
     context.user_data['config'] = {}
     await update.message.reply_text("Привет! Давайте создадим ваш баннер. Используйте кнопки ниже для настройки.")
-    await display_menu(update, context)
+    await display_menu(update.message, context)
     return MAIN_MENU
 
 async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -72,7 +75,7 @@ async def save_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except (ValueError, TypeError):
         await update.message.reply_text(f"❌ Неверный формат. Введите число от {MIN_DIMENSION} до {MAX_DIMENSION}.")
     
-    await display_menu(update, context)
+    await display_menu(update.message, context)
     return MAIN_MENU
 
 async def ask_for_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -88,18 +91,17 @@ async def save_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     except (ValueError, TypeError):
         await update.message.reply_text(f"❌ Неверный формат. Введите число от {MIN_DIMENSION} до {MAX_DIMENSION}.")
     
-    await display_menu(update, context)
+    await display_menu(update.message, context)
     return MAIN_MENU
 
 async def ask_for_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Запрашивает цвет, запоминая, для чего он (фон или текст)."""
-    # Сохраняем, какой цвет мы сейчас устанавливаем
     context.user_data['color_target'] = update.message.text 
     
     keyboard = [[f"{details['emoji']} {name}" for name, details in COLORS.items()][i:i+2] for i in range(0, len(COLORS), 2)]
     
     await update.message.reply_text("Выберите цвет:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return AWAIT_BG_COLOR # Используем один и тот же обработчик для обоих цветов
+    return AWAIT_BG_COLOR
 
 async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
@@ -117,7 +119,7 @@ async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except (ValueError, IndexError):
         await update.message.reply_text("❌ Пожалуйста, выберите цвет, нажав на кнопку.")
         
-    await display_menu(update, context)
+    await display_menu(update.message, context)
     return MAIN_MENU
 
 async def ask_for_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -140,11 +142,11 @@ async def save_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     else:
         await update.message.reply_text("❌ Пожалуйста, выберите шрифт из списка.")
         
-    await display_menu(update, context)
+    await display_menu(update.message, context)
     return MAIN_MENU
 
 async def ask_for_line_count(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['config']['text_lines'] = [] # Очищаем старый текст
+    context.user_data['config']['text_lines'] = []
     keyboard = [["1", "2"], ["3", "4"]]
     await update.message.reply_text("Сколько строк текста будет на баннере?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return AWAIT_LINE_COUNT
@@ -158,7 +160,7 @@ async def save_line_count_and_ask_text(update: Update, context: ContextTypes.DEF
         return AWAIT_TEXT_LINES
     except (ValueError, TypeError):
         await update.message.reply_text("❌ Нажмите на одну из кнопок (1-4).")
-        await display_menu(update, context)
+        await display_menu(update.message, context)
         return MAIN_MENU
 
 async def save_text_and_continue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -166,41 +168,41 @@ async def save_text_and_continue(update: Update, context: ContextTypes.DEFAULT_T
     config['text_lines'].append(update.message.text)
     
     collected = len(config['text_lines'])
-    total = config['line_count']
+    total = config.get('line_count', 0)
     
     if collected < total:
         await update.message.reply_text(f"Принято. Введи текст для строки {collected + 1}:")
         return AWAIT_TEXT_LINES
     else:
         await update.message.reply_text("✅ Весь текст сохранен!")
-        await display_menu(update, context)
+        await display_menu(update.message, context)
         return MAIN_MENU
 
 async def generate_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Проверяет данные и запускает генерацию превью."""
     config = context.user_data.get('config', {})
     required_keys = ['width', 'height', 'bg_color', 'text_color', 'font', 'text_lines']
     
-    if not all(key in config and config.get(key) for key in required_keys):
+    all_set = all(key in config and config.get(key) for key in required_keys)
+    
+    if not all_set or not config.get('text_lines'):
         await update.message.reply_text("❌ Пожалуйста, заполните все параметры перед генерацией.", reply_markup=ReplyKeyboardRemove())
-        await display_menu(update, context)
+        await display_menu(update.message, context)
         return MAIN_MENU
 
     await update.message.reply_text("Отлично! Все данные собраны, создаю превью...", reply_markup=ReplyKeyboardRemove())
     try:
         preview_image = create_preview_jpeg(config)
-        keyboard = [[InlineKeyboardButton("✅ Да, сгенерировать PDF", callback_data="generate_pdf"), InlineKeyboardButton("❌ Отмена", callback_data="cancel_generation")]]
+        keyboard = [[InlineKeyboardButton("✅ Да, сгенерировать PDF", callback_data="generate_pdf"), InlineKeyboardButton("❌ Назад в меню", callback_data="cancel_generation")]]
         await update.message.reply_photo(photo=preview_image, caption="Вот как будет выглядеть ваш баннер. Все верно?", reply_markup=InlineKeyboardMarkup(keyboard))
         return PREVIEW_CONFIRM
     except Exception as e:
         logger.error(f"Ошибка при создании превью: {e}", exc_info=True)
         await update.message.reply_text("Произошла ошибка при создании превью. Попробуйте снова.")
-        await display_menu(update, context)
+        await display_menu(update.message, context)
         return MAIN_MENU
 
-# --- Функции колбэков и отмены ---
-
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Генерирует PDF и возвращает пользователя в главное меню."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_caption(caption="⏳ Создаю финальный PDF-файл...")
@@ -216,12 +218,19 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
             caption=f"Новый баннер готов! Заказ от @{update.effective_user.username or update.effective_user.id}"
         )
         await query.edit_message_caption(caption="✅ Готово! Ваш баннер отправлен в канал.")
+        
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
         await query.edit_message_caption(caption="❌ Произошла ошибка при создании PDF.")
-        
-    context.user_data.clear()
-    return ConversationHandler.END
+    
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    # Очищаем конфиг для нового баннера и показываем меню снова
+    context.user_data['config'] = {}
+    await query.message.reply_text("\nВы можете создать следующий баннер:")
+    await display_menu(query.message, context)
+
+    # Возвращаемся в главное меню, а не завершаем диалог
+    return MAIN_MENU
 
 async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Возвращает в главное меню после отмены генерации PDF."""
@@ -229,7 +238,7 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     await query.delete_message()
     await update.effective_message.reply_text("Генерация отменена. Вы вернулись в главное меню.")
-    await display_menu(update.effective_message, context) # effective_message важен здесь
+    await display_menu(update.effective_message, context)
     return MAIN_MENU
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
