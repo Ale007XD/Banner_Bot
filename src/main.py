@@ -21,13 +21,19 @@ def main() -> None:
     """Запуск бота с новой структурой диалога."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # Настройка кнопки "Меню" с командой /start
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    # Используем константу для команды в меню
     application.bot.set_my_commands([
-        ('start', '🚀 Создать новый баннер')
+        ('start', BTN_RESTART)
     ])
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+        # Добавляем обработчик для кнопки перезапуска
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(Regex(f'^{BTN_RESTART}$'), start)
+        ],
         states={
             MAIN_MENU: [
                 MessageHandler(Regex(f'^{BTN_WIDTH}$'), ask_for_width),
@@ -50,7 +56,7 @@ def main() -> None:
             ],
         },
         fallbacks=[
-            CommandHandler("start", start), # Можно перезапустить в любой момент
+            CommandHandler("start", start),
             MessageHandler(Regex(f'^{BTN_CANCEL}$'), cancel),
             CommandHandler("cancel", cancel),
         ],
