@@ -15,82 +15,60 @@ logger = logging.getLogger(__name__)
 # --- Вспомогательная функция для создания меню ---
 
 async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Отображает главное меню с текущими настройками и кнопками,
-    подсвечивая заданные и незаданные параметры.
-    """
     message = update.message if hasattr(update, 'message') else update
     config = context.user_data.get('config', {})
-
     status_text = ["<b>Текущие настройки вашего баннера:</b>"]
 
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Логика с индикаторами ---
-    
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем индикатор для постпечати ---
+
     # Ширина
-    if config.get('width'):
-        status_text.append(f"🟢 <b>{BTN_WIDTH}:</b> {config['width']} мм")
-    else:
-        status_text.append(f"🔴 <b>{BTN_WIDTH}:</b> не задана")
-
+    if config.get('width'): status_text.append(f"🟢 <b>{BTN_WIDTH}:</b> {config['width']} мм")
+    else: status_text.append(f"🔴 <b>{BTN_WIDTH}:</b> не задана")
     # Высота
-    if config.get('height'):
-        status_text.append(f"🟢 <b>{BTN_HEIGHT}:</b> {config['height']} мм")
-    else:
-        status_text.append(f"🔴 <b>{BTN_HEIGHT}:</b> не задана")
-
+    if config.get('height'): status_text.append(f"🟢 <b>{BTN_HEIGHT}:</b> {config['height']} мм")
+    else: status_text.append(f"🔴 <b>{BTN_HEIGHT}:</b> не задана")
     # Цвет фона
-    if config.get('bg_color'):
-        status_text.append(f"🟢 <b>{BTN_BG_COLOR}:</b> {config['bg_color']}")
-    else:
-        status_text.append(f"🔴 <b>{BTN_BG_COLOR}:</b> не задан")
-
+    if config.get('bg_color'): status_text.append(f"🟢 <b>{BTN_BG_COLOR}:</b> {config['bg_color']}")
+    else: status_text.append(f"🔴 <b>{BTN_BG_COLOR}:</b> не задан")
     # Цвет текста
-    if config.get('text_color'):
-        status_text.append(f"🟢 <b>{BTN_TEXT_COLOR}:</b> {config['text_color']}")
-    else:
-        status_text.append(f"🔴 <b>{BTN_TEXT_COLOR}:</b> не задан")
-
+    if config.get('text_color'): status_text.append(f"🟢 <b>{BTN_TEXT_COLOR}:</b> {config['text_color']}")
+    else: status_text.append(f"🔴 <b>{BTN_TEXT_COLOR}:</b> не задан")
     # Шрифт
-    if config.get('font'):
-        status_text.append(f"🟢 <b>{BTN_FONT}:</b> {config['font']}")
-    else:
-        status_text.append(f"🔴 <b>{BTN_FONT}:</b> не задан")
-
+    if config.get('font'): status_text.append(f"🟢 <b>{BTN_FONT}:</b> {config['font']}")
+    else: status_text.append(f"🔴 <b>{BTN_FONT}:</b> не задан")
     # Текст
-    if config.get('text_lines'): # Проверяет, что список не пустой
+    if config.get('text_lines'):
         text_preview = ' | '.join(config['text_lines'])
         status_text.append(f"🟢 <b>{BTN_TEXT_LINES}:</b> <i>«{text_preview}»</i>")
-    else:
-        status_text.append(f"🔴 <b>{BTN_TEXT_LINES}:</b> не задан")
-
-
-    # Формируем клавиатуру (остается без изменений)
+    else: status_text.append(f"🔴 <b>{BTN_TEXT_LINES}:</b> не задан")
+    # Постпечать
+    if config.get('postprint'): status_text.append(f"🟢 <b>{BTN_POSTPRINT}:</b> {config['postprint']}")
+    else: status_text.append(f"🔴 <b>{BTN_POSTPRINT}:</b> не задана")
+    
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем новую кнопку в клавиатуру ---
     buttons = [
         [BTN_WIDTH, BTN_HEIGHT],
         [BTN_BG_COLOR, BTN_TEXT_COLOR],
         [BTN_FONT, BTN_TEXT_LINES],
-        [BTN_GENERATE],
+        [BTN_POSTPRINT, BTN_GENERATE], # Переносим кнопку генерации
         [BTN_CANCEL]
     ]
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
-    await message.reply_text(
-        "\n".join(status_text),
-        reply_markup=keyboard,
-        parse_mode='HTML'
-    )
+    await message.reply_text("\n".join(status_text), reply_markup=keyboard, parse_mode='HTML')
 
 
 # --- Функции диалога ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['config'] = {}
+    # Инициализируем конфиг со значением по умолчанию для постпечати
+    context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await update.message.reply_text("Привет! Давайте создадим ваш баннер. Используйте кнопки ниже для настройки.")
     await display_menu(update.message, context)
     return MAIN_MENU
 
-# ... (все остальные функции остаются БЕЗ ИЗМЕНЕНИЙ) ...
-
+# ... (старые функции до generate_banner остаются без изменений) ...
+# (Я их здесь пропускаю для краткости)
 async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):", reply_markup=ReplyKeyboardRemove())
     return AWAIT_WIDTH
@@ -197,14 +175,42 @@ async def save_text_and_continue(update: Update, context: ContextTypes.DEFAULT_T
         await display_menu(update.message, context)
         return MAIN_MENU
 
+# --- Новые функции для постпечати ---
+
+async def ask_for_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Запрашивает вариант постпечатной обработки."""
+    # Создаем клавиатуру из ключей словаря POSTPRINT_OPTIONS
+    buttons = [[key] for key in POSTPRINT_OPTIONS.keys()]
+    keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    
+    await update.message.reply_text("Выберите вариант постпечатной обработки (люверсы):", reply_markup=keyboard)
+    return AWAIT_POSTPRINT
+
+async def save_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохраняет выбор постпечати."""
+    choice = update.message.text
+    if choice in POSTPRINT_OPTIONS:
+        context.user_data['config']['postprint'] = choice
+        await update.message.reply_text(f"✅ Выбрано: {choice}")
+    else:
+        await update.message.reply_text("❌ Пожалуйста, выберите вариант из предложенных кнопок.")
+        
+    await display_menu(update.message, context)
+    return MAIN_MENU
+
+# --- Обновление функции генерации ---
+
 async def generate_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     config = context.user_data.get('config', {})
-    required_keys = ['width', 'height', 'bg_color', 'text_color', 'font', 'text_lines']
+    # Добавляем postprint в список обязательных ключей
+    required_keys = ['width', 'height', 'bg_color', 'text_color', 'font', 'text_lines', 'postprint']
+    
     all_set = all(key in config and config.get(key) for key in required_keys)
     if not all_set or not config.get('text_lines'):
         await update.message.reply_text("❌ Пожалуйста, заполните все параметры перед генерацией.", reply_markup=ReplyKeyboardRemove())
         await display_menu(update.message, context)
         return MAIN_MENU
+        
     await update.message.reply_text("Отлично! Все данные собраны, создаю превью...", reply_markup=ReplyKeyboardRemove())
     try:
         preview_image = create_preview_jpeg(config)
@@ -221,31 +227,46 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     await query.edit_message_caption(caption="⏳ Присваиваю номер заказа и создаю PDF-файл...")
+
     try:
+        config = context.user_data['config']
         order_number = get_next_order_number()
-        pdf_file = create_final_pdf(context.user_data['config'])
-        filename = f"order_{order_number}.pdf"
+        pdf_file = create_final_pdf(config)
+        
+        # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Формируем имя файла с кодом постпечати ---
+        postprint_code = POSTPRINT_OPTIONS.get(config['postprint'], "XX")
+        filename = f"order_{order_number}_{postprint_code}.pdf"
+        
+        # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем инфо о постпечати в сообщение ---
         channel_caption = (
-            f"Новый заказ №{order_number}\n"
-            f"От пользователя: @{update.effective_user.username or update.effective_user.id}"
+            f"✅ Новый заказ №{order_number}\n\n"
+            f"👤 От пользователя: @{update.effective_user.username or update.effective_user.id}\n"
+            f"🔩 Постпечать: <b>{config['postprint']}</b>"
         )
         await context.bot.send_document(
             chat_id=TELEGRAM_CHANNEL_ID,
             document=pdf_file,
             filename=filename,
-            caption=channel_caption
+            caption=channel_caption,
+            parse_mode='HTML'
         )
+        
         await query.edit_message_caption(
             caption=f"✅ Готово! Вашему заказу присвоен номер {order_number}. Баннер отправлен в канал."
         )
+        
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
         await query.edit_message_caption(caption="❌ Произошла ошибка при создании PDF.")
-    context.user_data['config'] = {}
+    
+    # Сбрасываем конфиг, но сохраняем значение по умолчанию для постпечати
+    context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await query.message.reply_text("\nВы можете создать следующий баннер:")
     await display_menu(query.message, context)
+
     return MAIN_MENU
 
+# ... (back_to_menu_callback и cancel остаются без изменений) ...
 async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
