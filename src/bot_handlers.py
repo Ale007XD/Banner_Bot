@@ -12,22 +12,59 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# --- Вспомогательная функция для создания меню ---
+
 async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отображает главное меню с текущими настройками и кнопками,
+    подсвечивая заданные и незаданные параметры.
+    """
     message = update.message if hasattr(update, 'message') else update
     config = context.user_data.get('config', {})
-    status_text = [
-        "Текущие настройки вашего баннера:",
-        f"<b>{BTN_WIDTH}:</b> {config.get('width', 'не задана')} мм",
-        f"<b>{BTN_HEIGHT}:</b> {config.get('height', 'не задана')} мм",
-        f"<b>{BTN_BG_COLOR}:</b> {config.get('bg_color', 'не задан')}",
-        f"<b>{BTN_TEXT_COLOR}:</b> {config.get('text_color', 'не задан')}",
-        f"<b>{BTN_FONT}:</b> {config.get('font', 'не задан')}",
-    ]
-    if 'text_lines' in config and config['text_lines']:
-        text_preview = ' | '.join(config['text_lines'])
-        status_text.append(f"<b>{BTN_TEXT_LINES}:</b> <i>«{text_preview}»</i>")
+
+    status_text = ["<b>Текущие настройки вашего баннера:</b>"]
+
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Логика с индикаторами ---
+    
+    # Ширина
+    if config.get('width'):
+        status_text.append(f"🟢 <b>{BTN_WIDTH}:</b> {config['width']} мм")
     else:
-        status_text.append(f"<b>{BTN_TEXT_LINES}:</b> не задан")
+        status_text.append(f"🔴 <b>{BTN_WIDTH}:</b> не задана")
+
+    # Высота
+    if config.get('height'):
+        status_text.append(f"🟢 <b>{BTN_HEIGHT}:</b> {config['height']} мм")
+    else:
+        status_text.append(f"🔴 <b>{BTN_HEIGHT}:</b> не задана")
+
+    # Цвет фона
+    if config.get('bg_color'):
+        status_text.append(f"🟢 <b>{BTN_BG_COLOR}:</b> {config['bg_color']}")
+    else:
+        status_text.append(f"🔴 <b>{BTN_BG_COLOR}:</b> не задан")
+
+    # Цвет текста
+    if config.get('text_color'):
+        status_text.append(f"🟢 <b>{BTN_TEXT_COLOR}:</b> {config['text_color']}")
+    else:
+        status_text.append(f"🔴 <b>{BTN_TEXT_COLOR}:</b> не задан")
+
+    # Шрифт
+    if config.get('font'):
+        status_text.append(f"🟢 <b>{BTN_FONT}:</b> {config['font']}")
+    else:
+        status_text.append(f"🔴 <b>{BTN_FONT}:</b> не задан")
+
+    # Текст
+    if config.get('text_lines'): # Проверяет, что список не пустой
+        text_preview = ' | '.join(config['text_lines'])
+        status_text.append(f"🟢 <b>{BTN_TEXT_LINES}:</b> <i>«{text_preview}»</i>")
+    else:
+        status_text.append(f"🔴 <b>{BTN_TEXT_LINES}:</b> не задан")
+
+
+    # Формируем клавиатуру (остается без изменений)
     buttons = [
         [BTN_WIDTH, BTN_HEIGHT],
         [BTN_BG_COLOR, BTN_TEXT_COLOR],
@@ -36,8 +73,15 @@ async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [BTN_CANCEL]
     ]
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-    await message.reply_text("\n".join(status_text), reply_markup=keyboard, parse_mode='HTML')
 
+    await message.reply_text(
+        "\n".join(status_text),
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+
+
+# --- Функции диалога ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {}
@@ -45,7 +89,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await display_menu(update.message, context)
     return MAIN_MENU
 
-# ... (все функции от ask_for_width до generate_pdf_callback остаются без изменений) ...
+# ... (все остальные функции остаются БЕЗ ИЗМЕНЕНИЙ) ...
 
 async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):", reply_markup=ReplyKeyboardRemove())
@@ -211,8 +255,6 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return MAIN_MENU
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Полностью отменяет диалог и предлагает начать заново с помощью кнопки."""
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
     keyboard = [[BTN_RESTART]]
     await update.message.reply_text(
         "Действие отменено.",
