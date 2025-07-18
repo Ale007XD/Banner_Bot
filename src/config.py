@@ -15,10 +15,10 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         "Необходимо задать переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID в файле .env"
     )
 
-# Константы для нового ConversationHandler
+# Добавляем новое состояние в конец
 (MAIN_MENU, AWAIT_WIDTH, AWAIT_HEIGHT, AWAIT_BG_COLOR, 
  AWAIT_LINE_COUNT, AWAIT_TEXT_LINES, AWAIT_TEXT_COLOR, 
- AWAIT_FONT_CHOICE, PREVIEW_CONFIRM) = range(9)
+ AWAIT_FONT_CHOICE, PREVIEW_CONFIRM, AWAIT_POSTPRINT) = range(10) # <-- Увеличили range до 10
 
 # Тексты для кнопок, чтобы избежать "магических строк" в коде
 BTN_WIDTH = "📏 Ширина"
@@ -30,11 +30,22 @@ BTN_TEXT_COLOR = "🎨 Цвет текста"
 BTN_FONT = "✒️ Шрифт"
 BTN_GENERATE = "🚀 Сгенерировать баннер"
 BTN_CANCEL = "❌ Отмена"
+BTN_POSTPRINT = "🔩 Постпечать"
 
 # Параметры для баннера
 SAFE_ZONE_MM = 30
 MIN_DIMENSION = 500
 MAX_DIMENSION = 3000
+
+POSTPRINT_NONE = "Без люверсов"
+POSTPRINT_CORNERS = "4 по углам"
+POSTPRINT_PERIMETER = "Через 0.25м"
+
+POSTPRINT_OPTIONS = {
+    POSTPRINT_NONE: "NL",      # No Lugs
+    POSTPRINT_CORNERS: "4L",   # 4 Lugs
+    POSTPRINT_PERIMETER: "PL", # Perimeter Lugs
+}
 
 # Названия шрифтов и соответствующие файлы
 FONTS = {
