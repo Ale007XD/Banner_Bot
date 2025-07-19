@@ -10,45 +10,8 @@ from .config import SAFE_ZONE_MM, COLORS, FONTS
 for name, path in FONTS.items():
     pdfmetrics.registerFont(TTFont(name, path))
 
-
-def _calculate_font_size_proportional(draw, text_lines, font_path, safe_width, safe_height):
-    """
-    Рассчитывает оптимальный единый размер шрифта для всех строк,
-    основываясь на реальной пиксельной ширине.
-    """
-    if not text_lines or not any(text_lines):
-        return ImageFont.truetype(font_path, 10), 10
-
-    ref_size = 100
-    ref_font = ImageFont.truetype(font_path, ref_size)
-
-    # 1. Определяем самую широкую строку, измеряя ее реальную ширину в пикселях.
-    def get_pixel_width(line):
-        bbox = draw.textbbox((0, 0), line, font=ref_font)
-        return bbox[2] - bbox[0]
-    
-    max_ref_width = 0
-    if text_lines:
-        max_ref_width = max(get_pixel_width(line) for line in text_lines)
-
-    if max_ref_width == 0: return ImageFont.truetype(font_path, 10), 10
-    
-    # 2. Рассчитываем размер шрифта, исходя из ширины.
-    font_size_by_width = ref_size * (safe_width / max_ref_width)
-
-    # 3. Рассчитываем размер шрифта, исходя из высоты.
-    line_spacing_ratio = 1.2
-    total_lines = len(text_lines)
-    font_size_by_height = safe_height / (total_lines * line_spacing_ratio)
-    
-    # 4. Выбираем наименьший из двух размеров, чтобы гарантированно все поместилось.
-    final_font_size = min(font_size_by_width, font_size_by_height)
-    final_font = ImageFont.truetype(font_path, int(final_font_size))
-    
-    return final_font, int(final_font_size)
-
-
 def create_preview_jpeg(data):
+    """Создает JPEG превью, масштабируя каждую строку НЕЗАВИСИМО."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -65,22 +28,46 @@ def create_preview_jpeg(data):
 
     safe_zone_px = SAFE_ZONE_MM * scale
     safe_width = width_px - 2 * safe_zone_px
-    safe_height = height_px - 2 * safe_zone_px
+    
+    # --- ИЗМЕНЕНИЕ: Расчет высоты и позиционирования ---
+    # Мы сначала рассчитаем все размеры, а потом будем рисовать
+    line_details = []
+    total_text_height = 0
+    line_spacing_ratio = 1.2
 
-    font, font_size = _calculate_font_size_proportional(draw, text_lines, font_path, safe_width, safe_height)
-    
-    line_spacing = font_size * 0.2
-    line_heights = [draw.textbbox((0,0), line, font=font)[3] - draw.textbbox((0,0), line, font=font)[1] for line in text_lines]
-    total_text_height = sum(line_heights) + line_spacing * (len(text_lines) - 1)
-    
+    for line in text_lines:
+        if not line.strip(): continue
+
+        # 1. Рассчитываем оптимальный размер для КАЖДОЙ строки по ширине
+        ref_size = 100
+        ref_font = ImageFont.truetype(font_path, ref_size)
+        ref_bbox = draw.textbbox((0, 0), line, font=ref_font)
+        ref_width = ref_bbox[2] - ref_bbox[0]
+
+        if ref_width == 0: continue
+        
+        font_size = int(ref_size * (safe_width / ref_width))
+        font = ImageFont.truetype(font_path, font_size)
+        
+        # 2. Измеряем высоту этой строки с новым шрифтом
+        line_bbox = draw.textbbox((0, 0), line, font=font)
+        line_height = line_bbox[3] - line_bbox[1]
+        line_width = line_bbox[2] - line_bbox[0]
+
+        line_details.append({
+            'text': line, 'font': font, 'width': line_width, 'height': line_height
+        })
+        total_text_height += line_height * line_spacing_ratio
+
+    # 3. Центрируем блок текста по вертикали
     y = (height_px - total_text_height) / 2
 
-    for i, line in enumerate(text_lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox[2] - bbox[0]
-        x = safe_zone_px + (safe_width - line_width) / 2
-        draw.text((x, y), line, font=font, fill=text_color_rgb)
-        y += line_heights[i] + line_spacing
+    # 4. Рисуем каждую строку с ее собственным, индивидуально рассчитанным шрифтом
+    for detail in line_details:
+        # Центрируем строку внутри безопасной зоны
+        x = safe_zone_px + (safe_width - detail['width']) / 2
+        draw.text((x, y), detail['text'], font=detail['font'], fill=text_color_rgb)
+        y += detail['height'] * line_spacing_ratio
 
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=90)
@@ -89,6 +76,7 @@ def create_preview_jpeg(data):
 
 
 def create_final_pdf(data):
+    """Создает PDF, масштабируя каждую строку НЕЗАВИСИМО."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -108,39 +96,47 @@ def create_final_pdf(data):
     c.setFillColor(text_color_cmyk)
 
     safe_width = (width_mm - 2 * SAFE_ZONE_MM) * mm
-    safe_height = (height_mm - 2 * SAFE_ZONE_MM) * mm
 
-    ref_size = 100
-    if not text_lines: text_lines = [" "] 
-
-    # Исправленный расчет для ReportLab
-    max_ref_width = 0
-    if text_lines:
-        max_ref_width = max(pdfmetrics.stringWidth(line, font_name, ref_size) for line in text_lines)
-    
-    font_size_by_width = ref_size * (safe_width / max_ref_width) if max_ref_width != 0 else 10
-    
+    # --- ИЗМЕНЕНИЕ: Аналогичная логика для PDF ---
+    line_details_pdf = []
+    total_text_height_pdf = 0
     line_spacing_ratio = 1.2
-    font_size_by_height = safe_height / (len(text_lines) * line_spacing_ratio)
     
-    font_size = min(font_size_by_width, font_size_by_height)
-    
-    c.setFont(font_name, font_size)
-    face = pdfmetrics.getFont(font_name).face
-    line_height_pdf = (face.ascent - face.descent) / 1000 * font_size * line_spacing_ratio
-    total_text_height_final = line_height_pdf * (len(text_lines) -1) + (face.ascent - face.descent) / 1000 * font_size
-    
-    y_start = (height_mm * mm + total_text_height_final) / 2 - (face.ascent / 1000 * font_size)
+    for line in text_lines:
+        if not line.strip(): continue
 
-    for i, line in enumerate(text_lines):
-        line_width_pdf = pdfmetrics.stringWidth(line, font_name, font_size)
-        x_start = (SAFE_ZONE_MM * mm) + (safe_width - line_width_pdf) / 2
+        ref_size = 100
+        ref_width = pdfmetrics.stringWidth(line, font_name, ref_size)
+        if ref_width == 0: continue
+        
+        font_size = ref_size * (safe_width / ref_width)
+        
+        face = pdfmetrics.getFont(font_name).face
+        line_height = (face.ascent - face.descent) / 1000 * font_size
+        line_width = pdfmetrics.stringWidth(line, font_name, font_size)
+
+        line_details_pdf.append({
+            'text': line, 'font_size': font_size, 'width': line_width, 'height': line_height
+        })
+        total_text_height_pdf += line_height * line_spacing_ratio
+    
+    y_start = (height_mm * mm + total_text_height_pdf) / 2
+    
+    for detail in line_details_pdf:
+        c.setFont(font_name, detail['font_size'])
+        face = pdfmetrics.getFont(font_name).face
+        # Корректируем y для каждой строки, так как reportlab рисует от базовой линии
+        y_pos = y_start - (face.ascent / 1000 * detail['font_size'])
+        
+        x_start = (SAFE_ZONE_MM * mm) + (safe_width - detail['width']) / 2
         
         text_object = c.beginText()
-        text_object.setTextOrigin(x_start, y_start - i * line_height_pdf)
-        text_object.setFont(font_name, font_size)
-        text_object.textLine(line)
+        text_object.setTextOrigin(x_start, y_pos)
+        text_object.setFont(font_name, detail['font_size'])
+        text_object.textLine(detail['text'])
         c.drawText(text_object)
+
+        y_start -= detail['height'] * line_spacing_ratio
 
     c.showPage()
     c.save()
