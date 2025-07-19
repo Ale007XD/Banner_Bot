@@ -10,9 +10,9 @@ from .config import SAFE_ZONE_MM, COLORS, FONTS
 for name, path in FONTS.items():
     pdfmetrics.registerFont(TTFont(name, path))
 
+# ... (функции _calculate_font_size_proportional и create_preview_jpeg остаются без изменений) ...
 
 def create_preview_jpeg(data):
-    """Создает JPEG превью, масштабируя текст для заполнения всей безопасной зоны."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -34,7 +34,6 @@ def create_preview_jpeg(data):
     initial_details = []
     initial_total_height = 0
 
-    # 1. ПЕРВЫЙ ПРОХОД: Рассчитываем базовые размеры для каждой строки по ширине
     for line in text_lines:
         if not line.strip(): continue
         ref_size = 100
@@ -51,10 +50,13 @@ def create_preview_jpeg(data):
         initial_details.append({'text': line, 'font_size': font_size, 'height': line_height})
         initial_total_height += line_height * line_spacing_ratio
 
-    # 2. ВТОРОЙ ПРОХОД: Масштабируем весь блок по высоте
-    if initial_total_height == 0: return # Защита от пустого текста
+    if initial_total_height == 0:
+        img_byte_arr_empty = io.BytesIO()
+        image.save(img_byte_arr_empty, format='JPEG', quality=90)
+        img_byte_arr_empty.seek(0)
+        return img_byte_arr_empty
+
     height_scale_factor = safe_height / initial_total_height
-    
     final_total_height = initial_total_height * height_scale_factor
     y = (height_px - final_total_height) / 2
 
@@ -77,21 +79,32 @@ def create_preview_jpeg(data):
 
 
 def create_final_pdf(data):
-    """Создает PDF, масштабируя текст для заполнения всей безопасной зоны."""
+    """Создает PDF, добавляя тонкую рамку для белого фона."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
 
-    c_bg, m_bg, y_bg, k_bg = COLORS[bg_color_name]['cmyk']
-    bg_color_cmyk = CMYKColor(c_bg/100, m_bg/100, y_bg/100, k_bg/100)
-    c_text, m_text, y_text, k_text = COLORS[text_color_name]['cmyk']
-    text_color_cmyk = CMYKColor(c_text/100, m_text/100, y_text/100, k_text/100)
-    
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=(width_mm * mm, height_mm * mm))
 
-    c.setFillColor(bg_color_cmyk)
-    c.rect(0, 0, width_mm * mm, height_mm * mm, fill=1, stroke=0)
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Логика отрисовки фона ---
+    if bg_color_name == 'Белый':
+        # Для белого фона рисуем только сверхтонкую серую рамку (абрис)
+        border_color = CMYKColor(0, 0, 0, 0.30) # CMYK 0,0,0,30
+        c.setStrokeColor(border_color)
+        c.setLineWidth(0.1)  # 0.1 пункта - стандартная толщина "hairline"
+        # Рисуем прямоугольник: fill=0 (без заливки), stroke=1 (с обводкой)
+        c.rect(0, 0, width_mm * mm, height_mm * mm, fill=0, stroke=1)
+    else:
+        # Для всех остальных цветов рисуем залитый прямоугольник без обводки
+        c_bg, m_bg, y_bg, k_bg = COLORS[bg_color_name]['cmyk']
+        bg_color_cmyk = CMYKColor(c_bg/100, m_bg/100, y_bg/100, k_bg/100)
+        c.setFillColor(bg_color_cmyk)
+        c.rect(0, 0, width_mm * mm, height_mm * mm, fill=1, stroke=0)
+
+    # --- Логика отрисовки текста остается без изменений ---
+    c_text, m_text, y_text, k_text = COLORS[text_color_name]['cmyk']
+    text_color_cmyk = CMYKColor(c_text/100, m_text/100, y_text/100, k_text/100)
     c.setFillColor(text_color_cmyk)
 
     safe_width = (width_mm - 2 * SAFE_ZONE_MM) * mm
@@ -100,7 +113,6 @@ def create_final_pdf(data):
     initial_details_pdf = []
     initial_total_height_pdf = 0
 
-    # 1. ПЕРВЫЙ ПРОХОД для PDF
     for line in text_lines:
         if not line.strip(): continue
         ref_size = 100
@@ -112,10 +124,13 @@ def create_final_pdf(data):
         initial_details_pdf.append({'text': line, 'font_size': font_size, 'height': line_height})
         initial_total_height_pdf += line_height * line_spacing_ratio
 
-    # 2. ВТОРОЙ ПРОХОД для PDF
-    if initial_total_height_pdf == 0: return pdf_buffer
+    if initial_total_height_pdf == 0:
+        c.showPage()
+        c.save()
+        pdf_buffer.seek(0)
+        return pdf_buffer
+        
     height_scale_factor_pdf = safe_height / initial_total_height_pdf
-    
     final_total_height_pdf = initial_total_height_pdf * height_scale_factor_pdf
     y_start = (height_mm * mm + final_total_height_pdf) / 2
 
@@ -145,6 +160,7 @@ def create_final_pdf(data):
 
 
 def create_font_preview_image():
+    # ... (эта функция остается без изменений) ...
     font_items = list(FONTS.items())
     img_width, line_height, padding = 1200, 100, 50
     img_height = len(font_items) * line_height + 2 * padding
