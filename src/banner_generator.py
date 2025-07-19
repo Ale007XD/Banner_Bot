@@ -11,41 +11,37 @@ from .config import SAFE_ZONE_MM, COLORS, FONTS
 for name, path in FONTS.items():
     pdfmetrics.registerFont(TTFont(name, path))
 
-def _calculate_adaptive_font_size(draw, text_lines, font_path, safe_zone_px):
-    """
-    Адаптивно подбирает максимальный размер шрифта, чтобы все строки текста
-    вмещались в безопасную зону.
-    """
-    safe_width_px, safe_height_px = safe_zone_px
-    font_size = 300  # Начинаем с большого размера
-    
-    while font_size > 10:
-        font = ImageFont.truetype(font_path, font_size)
-        
-        # Рассчитываем общую высоту и максимальную ширину для всех строк
-        total_text_height = 0
-        max_text_width = 0
-        line_spacing = font_size * 0.2  # Межстрочный интервал
-        
-        for i, line in enumerate(text_lines):
-            bbox = draw.textbbox((0, 0), line, font=font)
-            # ИСПРАВЛЕНО: Корректный расчет ширины и высоты
-            line_width = bbox[2] - bbox[0]
-            line_height = bbox[3] - bbox[1]
-            
-            if line_width > max_text_width:
-                max_text_width = line_width
-            
-            total_text_height += line_height
-            if i < len(text_lines) - 1:
-                total_text_height += line_spacing
+# --- НОВЫЙ, БОЛЕЕ ТОЧНЫЙ МЕТОД РАСЧЕТА ШРИФТА ---
 
-        if max_text_width < safe_width_px and total_text_height < safe_height_px:
-            return font, font_size  # Найден подходящий размер
-            
-        font_size -= 5 # Уменьшаем размер и пробуем снова
-        
-    return ImageFont.truetype(font_path, 10), 10 # Возвращаем минимальный размер, если не влезло
+def _calculate_font_size_proportional(draw, text_lines, font_path, safe_width, safe_height):
+    """Рассчитывает оптимальный размер шрифта пропорционально."""
+    if not text_lines or not any(text_lines):
+        return ImageFont.truetype(font_path, 10), 10
+
+    # 1. Определяем самую длинную строку
+    longest_line = max(text_lines, key=len)
+    
+    # 2. Рассчитываем размер на основе ширины
+    ref_size = 100
+    ref_font = ImageFont.truetype(font_path, ref_size)
+    ref_bbox = draw.textbbox((0, 0), longest_line, font=ref_font)
+    ref_width = ref_bbox[2] - ref_bbox[0]
+
+    if ref_width == 0: return ImageFont.truetype(font_path, 10), 10
+    
+    font_size_by_width = ref_size * (safe_width / ref_width)
+
+    # 3. Рассчитываем размер на основе высоты
+    line_spacing_ratio = 1.2  # Межстрочный интервал как 20% от высоты шрифта
+    total_lines = len(text_lines)
+    font_size_by_height = safe_height / (total_lines * line_spacing_ratio)
+    
+    # 4. Выбираем наименьший из двух размеров, чтобы все влезло
+    final_font_size = min(font_size_by_width, font_size_by_height)
+    final_font = ImageFont.truetype(font_path, int(final_font_size))
+    
+    return final_font, int(final_font_size)
+
 
 def create_preview_jpeg(data):
     """Создает JPEG превью баннера."""
@@ -63,16 +59,16 @@ def create_preview_jpeg(data):
     image = Image.new("RGB", (width_px, height_px), bg_color_rgb)
     draw = ImageDraw.Draw(image)
 
-    safe_zone_px_x = SAFE_ZONE_MM * scale
-    safe_zone_px_y = SAFE_ZONE_MM * scale
-    safe_width = width_px - 2 * safe_zone_px_x
-    safe_height = height_px - 2 * safe_zone_px_y
+    # Определяем безопасную зону в пикселях
+    safe_zone_px = SAFE_ZONE_MM * scale
+    safe_width = width_px - 2 * safe_zone_px
+    safe_height = height_px - 2 * safe_zone_px
 
-    font, font_size = _calculate_adaptive_font_size(draw, text_lines, font_path, (safe_width, safe_height))
+    # Используем новый точный метод
+    font, font_size = _calculate_font_size_proportional(draw, text_lines, font_path, safe_width, safe_height)
     
+    # Центрируем блок текста
     line_spacing = font_size * 0.2
-    
-    # ИСПРАВЛЕНО: Корректный расчет общей высоты блока текста
     line_heights = [draw.textbbox((0,0), line, font=font)[3] - draw.textbbox((0,0), line, font=font)[1] for line in text_lines]
     total_text_height = sum(line_heights) + line_spacing * (len(text_lines) - 1)
     
@@ -80,7 +76,6 @@ def create_preview_jpeg(data):
 
     for i, line in enumerate(text_lines):
         bbox = draw.textbbox((0, 0), line, font=font)
-        # ИСПРАВЛЕНО: Корректный расчет ширины
         line_width = bbox[2] - bbox[0]
         x = (width_px - line_width) / 2
         draw.text((x, y), line, font=font, fill=text_color_rgb)
@@ -90,6 +85,7 @@ def create_preview_jpeg(data):
     image.save(img_byte_arr, format='JPEG', quality=90)
     img_byte_arr.seek(0)
     return img_byte_arr
+
 
 def create_final_pdf(data):
     """Создает финальный PDF баннер с CMYK цветами и встроенными шрифтами."""
@@ -112,36 +108,37 @@ def create_final_pdf(data):
     
     c.setFillColor(text_color_cmyk)
 
+    # --- Точный расчет для PDF ---
     safe_width = (width_mm - 2 * SAFE_ZONE_MM) * mm
     safe_height = (height_mm - 2 * SAFE_ZONE_MM) * mm
+
+    # Аналогичный пропорциональный расчет для ReportLab
+    ref_size = 100
+    longest_line = max(text_lines, key=lambda line: pdfmetrics.stringWidth(line, font_name, ref_size))
+    ref_width = pdfmetrics.stringWidth(longest_line, font_name, ref_size)
     
-    font_size = 300
+    font_size_by_width = ref_size * (safe_width / ref_width) if ref_width != 0 else 10
+    
     line_spacing_ratio = 1.2
+    total_lines = len(text_lines)
+    font_size_by_height = safe_height / (total_lines * line_spacing_ratio)
     
-    while font_size > 10:
-        c.setFont(font_name, font_size)
-        face = pdfmetrics.getFont(font_name).face
-        
-        max_line_width = max(pdfmetrics.stringWidth(line, font_name, font_size) for line in text_lines)
-        total_text_height = (face.ascent - face.descent) / 1000 * font_size * len(text_lines) * line_spacing_ratio
-        
-        if max_line_width < safe_width and total_text_height < safe_height:
-            break
-        font_size -= 5
+    font_size = min(font_size_by_width, font_size_by_height)
     
+    # Центрируем блок текста с новым размером
     c.setFont(font_name, font_size)
     face = pdfmetrics.getFont(font_name).face
-    line_height = (face.ascent - face.descent) / 1000 * font_size * line_spacing_ratio
-    total_text_height_final = line_height * (len(text_lines) -1) + (face.ascent - face.descent) / 1000 * font_size
+    line_height_pdf = (face.ascent - face.descent) / 1000 * font_size * line_spacing_ratio
+    total_text_height_final = line_height_pdf * (len(text_lines) -1) + (face.ascent - face.descent) / 1000 * font_size
     
     y_start = (height_mm * mm + total_text_height_final) / 2 - (face.ascent / 1000 * font_size)
 
     for i, line in enumerate(text_lines):
-        line_width = pdfmetrics.stringWidth(line, font_name, font_size)
-        x_start = (width_mm * mm - line_width) / 2
+        line_width_pdf = pdfmetrics.stringWidth(line, font_name, font_size)
+        x_start = (width_mm * mm - line_width_pdf) / 2
         
         text_object = c.beginText()
-        text_object.setTextOrigin(x_start, y_start - i * line_height)
+        text_object.setTextOrigin(x_start, y_start - i * line_height_pdf)
         text_object.setFont(font_name, font_size)
         text_object.textLine(line)
         c.drawText(text_object)
@@ -155,37 +152,20 @@ def create_final_pdf(data):
 def create_font_preview_image():
     """Создает JPEG-изображение с примерами всех доступных шрифтов."""
     font_items = list(FONTS.items())
-    
-    img_width = 800
-    line_height = 80
-    padding = 40
+    img_width, line_height, padding = 800, 80, 40
     img_height = len(font_items) * line_height + 2 * padding
-    bg_color = (240, 240, 240)
-    
-    image = Image.new("RGB", (img_width, img_height), bg_color)
+    image = Image.new("RGB", (img_width, img_height), (240, 240, 240))
     draw = ImageDraw.Draw(image)
-    
     y = padding
     for name, path in font_items:
         try:
-            sample_text = name
-            font_size = 40
-            font = ImageFont.truetype(path, font_size)
-            
-            bbox = draw.textbbox((0,0), sample_text, font=font)
-            text_height = bbox[3] - bbox[1]
-            text_y = y + (line_height - text_height) / 2
-            
-            draw.text(
-                (padding, text_y), 
-                sample_text, 
-                font=font, 
-                fill=(0, 0, 0)
-            )
+            font = ImageFont.truetype(path, 40)
+            bbox = draw.textbbox((0,0), name, font=font)
+            text_y = y + (line_height - (bbox[3] - bbox[1])) / 2
+            draw.text((padding, text_y), name, font=font, fill=(0, 0, 0))
             y += line_height
         except Exception as e:
             print(f"Не удалось загрузить шрифт {name}: {e}")
-
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=95)
     img_byte_arr.seek(0)
