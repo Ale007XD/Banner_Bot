@@ -29,13 +29,11 @@ def admin_only(func):
 # --- АДМИН-КОМАНДЫ ---
 @admin_only
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет статистику администратору."""
     stats_text = get_stats()
     await update.message.reply_text(stats_text, parse_mode='MarkdownV2')
 
 @admin_only
 async def last_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет последний сгенерированный PDF администратору."""
     last_order_path = context.bot_data.get('last_order_path')
     if last_order_path and os.path.exists(last_order_path):
         await update.message.reply_document(
@@ -47,10 +45,8 @@ async def last_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Еще не было создано ни одного заказа с момента последнего перезапуска.")
 
 
-# --- Основная логика бота (остается прежней, но с одним изменением в generate_pdf_callback) ---
+# --- Основная логика бота ---
 
-# ... (все функции от display_menu до generate_banner остаются БЕЗ ИЗМЕНЕНИЙ) ...
-# ... (пропускаю их для краткости) ...
 async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message if hasattr(update, 'message') else update
     config = context.user_data.get('config', {})
@@ -79,11 +75,14 @@ async def display_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons.append([BTN_CANCEL])
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await message.reply_text("\n".join(status_text), reply_markup=keyboard, parse_mode='HTML')
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await update.message.reply_text("Привет! Давайте создадим ваш баннер. Используйте кнопки ниже для настройки.")
     await display_menu(update.message, context)
     return MAIN_MENU
+
+# ... (все функции до ask_for_font остаются без изменений) ...
 async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):", reply_markup=ReplyKeyboardRemove())
     return AWAIT_WIDTH
@@ -130,6 +129,8 @@ async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("❌ Пожалуйста, выберите цвет, нажав на кнопку.")
     await display_menu(update.message, context)
     return MAIN_MENU
+
+# --- Функция с изменением ---
 async def ask_for_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Готовлю превью шрифтов...", reply_markup=ReplyKeyboardRemove())
     try:
@@ -137,9 +138,15 @@ async def ask_for_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_photo(photo=font_preview, caption="Вот так выглядят доступные шрифты.")
     except Exception as e:
         logger.error(f"Ошибка при создании превью шрифтов: {e}", exc_info=True)
-    keyboard = [[name] for name in FONTS.keys()]
+    
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Группируем кнопки по 2 в ряд ---
+    font_names = list(FONTS.keys())
+    keyboard = [font_names[i:i+2] for i in range(0, len(font_names), 2)]
+    
     await update.message.reply_text("Выберите шрифт из списка:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return AWAIT_FONT_CHOICE
+
+# ... (все остальные функции остаются без изменений) ...
 async def save_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     font = update.message.text
     if font in FONTS:
@@ -243,30 +250,22 @@ async def generate_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Произошла ошибка при создании превью. Попробуйте снова.")
         await display_menu(update.message, context)
         return MAIN_MENU
-
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     await query.edit_message_caption(caption="⏳ Присваиваю номер заказа и создаю PDF-файл...")
-
     try:
         config = context.user_data['config']
         order_number = get_next_order_number()
         pdf_file_data = create_final_pdf(config)
-        
         postprint_code = POSTPRINT_OPTIONS.get(config['postprint'], "XX")
         filename = f"order_{order_number}_{postprint_code}.pdf"
-
-        # --- ИЗМЕНЕНИЕ: Сохраняем PDF на диск для админ-команды ---
         orders_dir = "orders"
         os.makedirs(orders_dir, exist_ok=True)
         file_path = os.path.join(orders_dir, filename)
         with open(file_path, 'wb') as f:
             f.write(pdf_file_data.getbuffer())
-        
-        # Запоминаем путь к последнему файлу
         context.bot_data['last_order_path'] = file_path
-        
         channel_caption = (
             f"✅ Новый заказ №{order_number}\n\n"
             f"👤 От пользователя: @{update.effective_user.username or update.effective_user.id}\n"
@@ -279,18 +278,14 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
             caption=channel_caption,
             parse_mode='HTML'
         )
-        
         await query.edit_message_caption(caption=f"✅ Готово! Вашему заказу присвоен номер {order_number}. Баннер отправлен в канал.")
-        
     except Exception as e:
         logger.error(f"Ошибка при создании или отправке PDF: {e}", exc_info=True)
         await query.edit_message_caption(caption="❌ Произошла ошибка при создании PDF.")
-    
     context.user_data['config'] = {'postprint': POSTPRINT_NONE}
     await query.message.reply_text("\nВы можете создать следующий баннер:")
     await display_menu(query.message, context)
     return MAIN_MENU
-
 async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -298,7 +293,6 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await update.effective_message.reply_text("Генерация отменена. Вы вернулись в главное меню.")
     await display_menu(update.effective_message, context)
     return MAIN_MENU
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [[BTN_RESTART]]
     await update.message.reply_text("Действие отменено.", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
