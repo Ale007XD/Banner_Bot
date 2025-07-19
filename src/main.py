@@ -22,8 +22,10 @@ def main() -> None:
     application.bot.set_my_commands([('start', BTN_RESTART)])
 
     conv_handler = ConversationHandler(
-        # ... (entry_points и states остаются без изменений) ...
-        entry_points=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_RESTART}$'), start)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(Regex(f'^{BTN_RESTART}$'), start)
+        ],
         states={
             MAIN_MENU: [
                 MessageHandler(Regex(f'^{BTN_WIDTH}$'), ask_for_width),
@@ -34,8 +36,10 @@ def main() -> None:
                 MessageHandler(Regex(f'^{BTN_TEXT_LINES}$'), ask_for_line_count),
                 MessageHandler(Regex(f'^{BTN_POSTPRINT}$'), ask_for_postprint),
                 MessageHandler(Regex(f'^{BTN_EDIT_TEXT}$'), ask_which_line_to_edit),
-                MessageHandler(Regex(f'^{BTN_GENERATE}$'), generate_banner),
+                # --- ИЗМЕНЕНИЕ: Кнопка снова ведет на генерацию превью ---
+                MessageHandler(Regex(f'^{BTN_GENERATE}$'), generate_preview),
             ],
+            
             AWAIT_LINE_CHOICE_FOR_EDIT: [MessageHandler(Regex(f'^{BTN_BACK}$'), back_to_main_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, ask_for_new_text)],
             AWAIT_NEW_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_text)],
             AWAIT_WIDTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_width)],
@@ -47,13 +51,16 @@ def main() -> None:
             AWAIT_POSTPRINT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_postprint)],
             PREVIEW_CONFIRM: [CallbackQueryHandler(generate_pdf_callback, pattern="^generate_pdf$"), CallbackQueryHandler(back_to_menu_callback, pattern="^cancel_generation$")],
         },
-        fallbacks=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_CANCEL}$'), cancel), CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(Regex(f'^{BTN_CANCEL}$'), cancel),
+            CommandHandler("cancel", cancel),
+        ],
         per_message=False,
     )
 
     application.add_handler(conv_handler)
     
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем обработчики админ-команд ---
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
     
