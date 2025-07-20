@@ -10,9 +10,9 @@ from .config import SAFE_ZONE_MM, COLORS, FONTS
 for name, path in FONTS.items():
     pdfmetrics.registerFont(TTFont(name, path))
 
-# ... (функции _calculate_font_size_proportional и create_preview_jpeg остаются без изменений) ...
 
 def create_preview_jpeg(data):
+    """Создает JPEG превью с финально исправленным масштабированием."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -31,9 +31,9 @@ def create_preview_jpeg(data):
     safe_height = height_px - 2 * safe_zone_px
     
     line_spacing_ratio = 1.2
-    initial_details = []
-    initial_total_height = 0
-
+    base_details = []
+    
+    # 1. Рассчитываем базовые размеры для каждой строки по ШИРИНЕ
     for line in text_lines:
         if not line.strip(): continue
         ref_size = 100
@@ -46,22 +46,22 @@ def create_preview_jpeg(data):
         font = ImageFont.truetype(font_path, int(font_size))
         line_bbox = draw.textbbox((0, 0), line, font=font)
         line_height = line_bbox[3] - line_bbox[1]
-        
-        initial_details.append({'text': line, 'font_size': font_size, 'height': line_height})
-        initial_total_height += line_height * line_spacing_ratio
+        base_details.append({'text': line, 'font_size': font_size, 'height': line_height})
 
-    if initial_total_height == 0:
-        img_byte_arr_empty = io.BytesIO()
-        image.save(img_byte_arr_empty, format='JPEG', quality=90)
-        img_byte_arr_empty.seek(0)
-        return img_byte_arr_empty
+    # 2. Измеряем реальную общую ВЫСОТУ блока с базовыми размерами
+    actual_total_height = sum(d['height'] * line_spacing_ratio for d in base_details)
+    
+    # 3. Вычисляем финальный коэффициент масштабирования, если блок не помещается по высоте
+    final_scale_factor = 1.0
+    if actual_total_height > safe_height:
+        final_scale_factor = safe_height / actual_total_height
 
-    height_scale_factor = safe_height / initial_total_height
-    final_total_height = initial_total_height * height_scale_factor
+    # 4. Центрируем и рисуем, применяя финальный коэффициент
+    final_total_height = actual_total_height * final_scale_factor
     y = (height_px - final_total_height) / 2
-
-    for detail in initial_details:
-        final_font_size = int(detail['font_size'] * height_scale_factor)
+    
+    for detail in base_details:
+        final_font_size = int(detail['font_size'] * final_scale_factor)
         final_font = ImageFont.truetype(font_path, final_font_size)
         
         final_bbox = draw.textbbox((0, 0), detail['text'], font=final_font)
@@ -79,7 +79,7 @@ def create_preview_jpeg(data):
 
 
 def create_final_pdf(data):
-    """Создает PDF, добавляя тонкую рамку для белого фона."""
+    """Создает PDF с финально исправленным масштабированием."""
     width_mm, height_mm = data['width'], data['height']
     bg_color_name, text_color_name = data['bg_color'], data['text_color']
     text_lines, font_name = data['text_lines'], data['font']
@@ -87,22 +87,17 @@ def create_final_pdf(data):
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=(width_mm * mm, height_mm * mm))
 
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Логика отрисовки фона ---
     if bg_color_name == 'Белый':
-        # Для белого фона рисуем только сверхтонкую серую рамку (абрис)
-        border_color = CMYKColor(0, 0, 0, 0.30) # CMYK 0,0,0,30
+        border_color = CMYKColor(0, 0, 0, 0.30)
         c.setStrokeColor(border_color)
-        c.setLineWidth(0.1)  # 0.1 пункта - стандартная толщина "hairline"
-        # Рисуем прямоугольник: fill=0 (без заливки), stroke=1 (с обводкой)
+        c.setLineWidth(0.1)
         c.rect(0, 0, width_mm * mm, height_mm * mm, fill=0, stroke=1)
     else:
-        # Для всех остальных цветов рисуем залитый прямоугольник без обводки
         c_bg, m_bg, y_bg, k_bg = COLORS[bg_color_name]['cmyk']
         bg_color_cmyk = CMYKColor(c_bg/100, m_bg/100, y_bg/100, k_bg/100)
         c.setFillColor(bg_color_cmyk)
         c.rect(0, 0, width_mm * mm, height_mm * mm, fill=1, stroke=0)
 
-    # --- Логика отрисовки текста остается без изменений ---
     c_text, m_text, y_text, k_text = COLORS[text_color_name]['cmyk']
     text_color_cmyk = CMYKColor(c_text/100, m_text/100, y_text/100, k_text/100)
     c.setFillColor(text_color_cmyk)
@@ -110,9 +105,8 @@ def create_final_pdf(data):
     safe_width = (width_mm - 2 * SAFE_ZONE_MM) * mm
     safe_height = (height_mm - 2 * SAFE_ZONE_MM) * mm
     line_spacing_ratio = 1.2
-    initial_details_pdf = []
-    initial_total_height_pdf = 0
-
+    base_details_pdf = []
+    
     for line in text_lines:
         if not line.strip(): continue
         ref_size = 100
@@ -121,22 +115,20 @@ def create_final_pdf(data):
         font_size = ref_size * (safe_width / ref_width)
         face = pdfmetrics.getFont(font_name).face
         line_height = (face.ascent - face.descent) / 1000 * font_size
-        initial_details_pdf.append({'text': line, 'font_size': font_size, 'height': line_height})
-        initial_total_height_pdf += line_height * line_spacing_ratio
+        base_details_pdf.append({'text': line, 'font_size': font_size, 'height': line_height})
 
-    if initial_total_height_pdf == 0:
-        c.showPage()
-        c.save()
-        pdf_buffer.seek(0)
-        return pdf_buffer
+    actual_total_height_pdf = sum(d['height'] * line_spacing_ratio for d in base_details_pdf)
+    
+    final_scale_factor_pdf = 1.0
+    if actual_total_height_pdf > safe_height:
+        final_scale_factor_pdf = safe_height / actual_total_height_pdf
         
-    height_scale_factor_pdf = safe_height / initial_total_height_pdf
-    final_total_height_pdf = initial_total_height_pdf * height_scale_factor_pdf
+    final_total_height_pdf = actual_total_height_pdf * final_scale_factor_pdf
     y_start = (height_mm * mm + final_total_height_pdf) / 2
 
-    for detail in initial_details_pdf:
-        final_font_size = detail['font_size'] * height_scale_factor_pdf
-        final_line_height = detail['height'] * height_scale_factor_pdf
+    for detail in base_details_pdf:
+        final_font_size = detail['font_size'] * final_scale_factor_pdf
+        final_line_height = detail['height'] * final_scale_factor_pdf
         
         c.setFont(font_name, final_font_size)
         face = pdfmetrics.getFont(font_name).face
@@ -160,18 +152,15 @@ def create_final_pdf(data):
 
 
 def create_font_preview_image():
-    # ... (эта функция остается без изменений) ...
     font_items = list(FONTS.items())
     img_width, line_height, padding = 1200, 100, 50
-    img_height = len(font_items) * line_height + 2 * padding
     bg_color, font_name_color, example_color = (240, 240, 240), (0, 0, 0), (80, 80, 80)
+    img_height = len(font_items) * line_height + 2 * padding
     image = Image.new("RGB", (img_width, img_height), bg_color)
     draw = ImageDraw.Draw(image)
-    
     y = padding
     example_text = "Продажа 123-45-67"
     font_size = 40
-
     for name, path in font_items:
         try:
             font = ImageFont.truetype(path, font_size)
@@ -184,7 +173,6 @@ def create_font_preview_image():
             y += line_height
         except Exception as e:
             print(f"Не удалось загрузить шрифт {name}: {e}")
-
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=95)
     img_byte_arr.seek(0)
