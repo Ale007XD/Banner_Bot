@@ -22,14 +22,14 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
  AWAIT_LINE_COUNT, AWAIT_TEXT_LINES, AWAIT_TEXT_COLOR, 
  AWAIT_FONT_CHOICE, PREVIEW_CONFIRM, AWAIT_POSTPRINT,
  AWAIT_LINE_CHOICE_FOR_EDIT, AWAIT_NEW_TEXT,
- AWAIT_LINE_FOR_SCALE, AWAIT_PERCENTAGE) = range(100, 114) # <-- Увеличили range
+ AWAIT_LINE_FOR_SCALE, AWAIT_PERCENTAGE) = range(100, 114) # Увеличили range
 
 # Тексты для кнопок, чтобы избежать "магических строк" в коде
 BTN_WIDTH = "📏 Ширина"
 BTN_HEIGHT = "📏 Высота"
 BTN_BG_COLOR = "🎨 Цвет фона"
 BTN_LINE_COUNT = "🔠 Кол-во строк"
-BTN_TEXT_LINES = "✍️ Текст"
+BTN_TEXT_LINES = "✍️ Ввести текст"
 BTN_TEXT_COLOR = "🎨 Цвет текста"
 BTN_FONT = "✒️ Шрифт"
 BTN_GENERATE = "🚀 Сгенерировать баннер"
@@ -37,6 +37,8 @@ BTN_CANCEL = "❌ Отмена"
 BTN_POSTPRINT = "🔩 Постпечать"
 BTN_EDIT_TEXT = "✍️ Редактировать текст"
 BTN_BACK = "↩️ Назад"
+# --- ИЗМЕНЕНИЕ: Новая кнопка ---
+BTN_SCALE_TEXT = "↔️ Масштаб строк"
 
 # Параметры для баннера
 SAFE_ZONE_MM = 30
