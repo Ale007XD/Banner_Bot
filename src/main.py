@@ -1,14 +1,28 @@
 import logging
-from telegram.ext import (Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler)
+import asyncio
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
+)
 from telegram.ext.filters import Regex
 from .config import *
-from .bot_handlers import *
+from .bot_handlers import (
+    start, ask_for_width, save_width, ask_for_height, save_height,
+    ask_for_color, save_color, ask_for_font, save_font,
+    ask_for_line_count, save_line_count_and_ask_text,
+    save_text_and_continue, ask_which_line_to_edit, ask_for_new_text, save_edited_text,
+    ask_which_line_to_scale, ask_for_percentage, save_scale,
+    back_to_main_menu, ask_for_postprint, save_postprint,
+    generate_preview, generate_pdf_callback, back_to_menu_callback,
+    cancel, stats_command, last_order_command
+)
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-def main() -> None:
+async def main() -> None:
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    application.bot.set_my_commands([('start', BTN_RESTART)])
+    await application.bot.set_my_commands([('start', BTN_RESTART)])
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_RESTART}$'), start)],
@@ -55,9 +69,10 @@ def main() -> None:
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
     
-    application.run_polling()
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    await application.updater.idle()
 
 if __name__ == "__main__":
-    main()
-
-# Автоматический деплой - обновлено в 3:13 PM, 11 августа 2025
+    asyncio.run(main())
