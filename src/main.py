@@ -59,7 +59,7 @@ async def main() -> None:
             AWAIT_LINE_COUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_line_count_and_ask_text)],
             AWAIT_TEXT_LINES: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_text_and_continue)],
             AWAIT_POSTPRINT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_postprint)],
-            PREVIEW_CONFIRM: [CallbackQueryHandler(generate_pdf_callback, pattern="^generate_pdf$"), CallbackQueryHandler(back_to_menu_callback, pattern="^cancel_generation$")],
+            PREVIEW_CONFIRM: [CallbackQueryHandler(generate_pdf_callback, pattern="^generate_pdf$"), CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")],
         },
         fallbacks=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_CANCEL}$'), cancel), CommandHandler("cancel", cancel)],
         per_message=False,
