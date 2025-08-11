@@ -1,5 +1,5 @@
-from src.image_processing import create_preview_jpeg, create_final_pdf, create_final_tiff
-from src.constants import *
+from .banner_generator import create_preview_jpeg, create_final_pdf, create_final_tiff
+from .config import *
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 import os
@@ -32,7 +32,6 @@ async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return MAIN_MENU
 
 # ... (остальные функции без изменений)
-
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await display_menu(update.message, context)
     return MAIN_MENU
@@ -60,10 +59,8 @@ async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         photo=preview_image, 
         caption="Все верно?", 
         reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Да, PDF+TIFF", callback_data="generate_pdf"), 
-                InlineKeyboardButton("❌ Назад в меню", callback_data="cancel_generation")
-            ]
+            [InlineKeyboardButton("✅ Да, создать PDF", callback_data="generate_pdf")],
+            [InlineKeyboardButton("❌ Нет, вернуться в меню", callback_data="back_to_menu")]
         ])
     )
     return PREVIEW_CONFIRM
