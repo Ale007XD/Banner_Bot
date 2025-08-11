@@ -1,25 +1,24 @@
 name: Deploy Telegram Bot to VPS
-
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
-      # 1. Скачиваем исходный код
+      # 1. Чекаут кода
       - name: Checkout code
         uses: actions/checkout@v4
-
+      
       # 2. Создаем .env файл
       - name: Create .env file
         run: |
           echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
           echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
           echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
+      
       
       # 3. Копируем файлы проекта на VPS
       - name: Copy project files to VPS
@@ -32,6 +31,7 @@ jobs:
           source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
           target: "~/banner_bot"
           
+      
       # 4. Подключаемся к VPS и перезапускаем Docker
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
@@ -43,9 +43,9 @@ jobs:
             cd ~/banner_bot
             docker-compose down
             docker-compose up --build -d
-
-      # 5. Проверяем логи контейнера после запуска
-      - name: Check Docker logs
+      
+      # 5. Проверяем логи контейнера после запуска с повторами для диагностики
+      - name: Check Docker logs with retry diagnostics
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -53,8 +53,14 @@ jobs:
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             cd ~/banner_bot
-            echo "=== Checking Docker container status ==="
-            docker-compose ps
-            echo "=== Last 50 lines of container logs ==="
-            docker-compose logs --tail=50 telegram-bot
-            echo "=== End of logs ==="
+            echo "=== First check: Docker container status ==="
+            docker ps
+            echo "=== First check: Last 50 lines of container logs ==="
+            docker logs --tail=50 telegram-bot
+            echo "=== Waiting 3 seconds for potential restarts ==="
+            sleep 3
+            echo "=== Second check: Docker container status ==="
+            docker ps
+            echo "=== Second check: Last 50 lines of container logs ==="
+            docker logs --tail=50 telegram-bot
+            echo "=== End of diagnostics ==="
