@@ -1,5 +1,6 @@
 from .banner_generator import create_preview_jpeg, create_final_pdf, create_final_tiff
 from .config import *
+from .order_manager import get_next_order_number, get_stats
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 import os
@@ -33,6 +34,14 @@ async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data['config']['text_lines'][line_index]['scale'] = scale_value
     except (KeyError, IndexError, ValueError):
         await update.message.reply_text("❌ Ошибка.")
+    await display_menu(update.message, context)
+    return MAIN_MENU
+
+# --- ДОБАВИТЬ НОВУЮ ФУНКЦИЮ ДЛЯ СТАТИСТИКИ ---
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Показывает статистику заказов."""
+    stats = get_stats()
+    await update.message.reply_text(stats, parse_mode='Markdown')
     await display_menu(update.message, context)
     return MAIN_MENU
 
