@@ -9,7 +9,7 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 def main() -> None:
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.bot.set_my_commands([('start', BTN_RESTART)])
-
+    
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_RESTART}$'), start)],
         states={
@@ -50,7 +50,7 @@ def main() -> None:
         fallbacks=[CommandHandler("start", start), MessageHandler(Regex(f'^{BTN_CANCEL}$'), cancel), CommandHandler("cancel", cancel)],
         per_message=False,
     )
-
+    
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
@@ -59,3 +59,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Автоматический деплой - обновлено в 3:13 PM, 11 августа 2025
