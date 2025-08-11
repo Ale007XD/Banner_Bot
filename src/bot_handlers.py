@@ -4,6 +4,11 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKe
 from telegram.ext import ContextTypes
 import os
 
+# Start handler - entry point for the conversation
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await display_menu(update, context)
+    return MAIN_MENU
+
 # --- НОВЫЕ ФУНКЦИИ для масштабирования ---
 async def ask_which_line_to_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text_items = context.user_data.get('config', {}).get('text_lines', [])
@@ -124,3 +129,5 @@ async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     await query.delete_message()
+    await display_menu(query.message, context)
+    return MAIN_MENU
