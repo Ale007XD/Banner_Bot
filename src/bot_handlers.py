@@ -61,68 +61,113 @@ async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data['config']['text_lines'][line_index]['scale'] = scale_value
     except (KeyError, IndexError, ValueError):
         await update.message.reply_text("❌ Ошибка.")
+    
     await display_menu(update.message, context)
     return MAIN_MENU
 
-# --- ДОБАВИТЬ НОВУЮ ФУНКЦИЮ ДЛЯ СТАТИСТИКИ ---
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Показывает статистику заказов."""
     stats = get_stats()
-    await update.message.reply_text(stats, parse_mode='Markdown')
-    await display_menu(update.message, context)
-    return MAIN_MENU
+    stats_text = f"📊 **Статистика заказов**\n\n" \
+                 f"📦 Всего заказов: {stats['total_orders']}\n" \
+                 f"📅 Сегодня: {stats['today_orders']}\n" \
+                 f"📈 За неделю: {stats['week_orders']}\n" \
+                 f"🚀 За месяц: {stats['month_orders']}"
+    
+    buttons = [[BTN_BACK]]
+    await update.message.reply_text(
+        stats_text, 
+        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True),
+        parse_mode='Markdown'
+    )
+    return AWAIT_BACK_TO_MENU
 
-# ... (остальные функции без изменений)
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await display_menu(update.message, context)
+    await display_menu(update, context)
     return MAIN_MENU
 
+# --- НОВЫЕ ФУНКЦИИ для постпечати ---
 async def ask_for_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Выберите вариант постпечатной обработки:", reply_markup=ReplyKeyboardMarkup([[key] for key in POSTPRINT_OPTIONS.keys()], resize_keyboard=True))
+    """Показывает меню выбора постпечати."""
+    buttons = [
+        [POSTPRINT_NONE],
+        [POSTPRINT_UV_GLOSS, POSTPRINT_UV_MATTE],
+        [POSTPRINT_LAMINATION_GLOSS, POSTPRINT_LAMINATION_MATTE],
+        [BTN_BACK]
+    ]
+    
+    await update.message.reply_text(
+        "🔩 Выберите тип постпечати:",
+        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    )
     return AWAIT_POSTPRINT
 
 async def save_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.message.text in POSTPRINT_OPTIONS:
-        context.user_data['config']['postprint'] = update.message.text
+    """Сохраняет выбранную постпечать."""
+    selected_postprint = update.message.text
+    
+    # Проверяем, что выбранный вариант есть в списке доступных
+    valid_options = [POSTPRINT_NONE, POSTPRINT_UV_GLOSS, POSTPRINT_UV_MATTE, 
+                    POSTPRINT_LAMINATION_GLOSS, POSTPRINT_LAMINATION_MATTE]
+    
+    if selected_postprint in valid_options:
+        if 'config' not in context.user_data:
+            context.user_data['config'] = {}
+        context.user_data['config']['postprint'] = selected_postprint
+        
+        await update.message.reply_text(
+            f"✅ Постпечать установлена: {selected_postprint}"
+        )
+    else:
+        await update.message.reply_text("❌ Неверный выбор постпечати.")
+    
     await display_menu(update.message, context)
     return MAIN_MENU
 
+# Generate preview function - the main function we need to fix
 async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Генерирует и отправляет предпросмотр баннера."""
     config = context.user_data.get('config', {})
+    text_lines = config.get('text_lines', [])
     
-    if not config.get('text_lines'):
-        await update.message.reply_text("❌ Сначала добавьте текст!")
-        await display_menu(update.message, context)
-        return MAIN_MENU
-    
-    await update.message.reply_text("⏳ Создаю превью...")
+    if not text_lines:
+        await update.message.reply_text(
+            "❌ Сначала добавьте текст для баннера.",
+            reply_markup=ReplyKeyboardMarkup([[BTN_BACK]], resize_keyboard=True)
+        )
+        return AWAIT_BACK_TO_MENU
     
     try:
+        # Генерируем предпросмотр
+        await update.message.reply_text("⏳ Создаю предпросмотр...")
+        
         preview_data = create_preview_jpeg(config)
         
-        # Создаем inline-клавиатуру с исправленными callback_data
+        # Создаем inline клавиатуру для подтверждения
         keyboard = [
-            [
-                InlineKeyboardButton("📄 Создать PDF", callback_data=CALLBACK_GENERATE_PDF),
-                InlineKeyboardButton("🔙 В меню", callback_data=CALLBACK_BACK_TO_MENU)
-            ]
+            [InlineKeyboardButton("✅ Создать PDF", callback_data="generate_pdf")],
+            [InlineKeyboardButton("🔙 Вернуться к меню", callback_data="back_to_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Исправленный вызов reply_photo (убрана лишняя закрывающая скобка)
+        # Отправляем предпросмотр
         await update.message.reply_photo(
             photo=preview_data,
-            caption="✅ Превью готово! Выберите действие:",
-            reply_markup=reply_markup
+            caption="🎨 **Предпросмотр баннера**\n\nПроверьте, все ли устраивает. Если да — создавайте финальный PDF.",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
         )
         
-        return PREVIEW_STATE
+        # This is the key change - return PREVIEW_CONFIRM instead of PREVIEW_STATE
+        return PREVIEW_CONFIRM
         
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка создания превью: {str(e)}")
-        await display_menu(update.message, context)
-        return MAIN_MENU
+        await update.message.reply_text(
+            f"❌ Ошибка при создании предпросмотра: {str(e)}",
+            reply_markup=ReplyKeyboardMarkup([[BTN_BACK]], resize_keyboard=True)
+        )
+        return AWAIT_BACK_TO_MENU
 
+# Callback handlers
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
