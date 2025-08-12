@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      
       # 1. Чекаут кода
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +32,7 @@ jobs:
           target: "~/banner_bot"
           
       
-      # 4. Подключаемся к VPS и перезапускаем Docker
+      # 4. Подключаемся к VPS и перезапускаем Docker с принудительной пересборкой
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -42,9 +43,20 @@ jobs:
             cd ~/banner_bot
             docker compose down || true
             docker ps -a | grep pdf_banner_bot && docker rm -f pdf_banner_bot || true
+            docker compose build --no-cache
             docker compose up -d
       
-      # 5. Проверяем логи контейнера после запуска с повторами для диагностики
+      # 5. Очистка Docker образов после успешного деплоя
+      - name: Cleanup Docker images
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            docker image prune -f
+      
+      # 6. Проверяем логи контейнера после запуска с повторами для диагностики
       - name: Check Docker logs with retry diagnostics
         uses: appleboy/ssh-action@v1.0.3
         with:
