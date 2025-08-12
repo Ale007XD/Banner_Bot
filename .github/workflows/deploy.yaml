@@ -1,0 +1,45 @@
+name: Deploy Telegram Bot to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Скачиваем исходный код
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Создаем .env файл
+      - name: Create .env file
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
+          echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
+          echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
+      
+      # 3. Копируем файлы проекта на VPS
+      - name: Copy project files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Все файлы в одну строку через запятую ---
+          source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
+          target: "~/banner_bot" 
+          
+      # 4. Подключаемся к VPS и перезапускаем Docker
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/banner_bot
+            docker-compose down
+            docker-compose up --build -d
