@@ -2,6 +2,7 @@ name: Deploy Telegram Bot to VPS
 on:
   push:
     branches: [ main ]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -42,9 +43,12 @@ jobs:
           script: |
             cd ~/banner_bot
             docker compose down || true
+            docker compose rm -fsv || true
             docker ps -a | grep pdf_banner_bot && docker rm -f pdf_banner_bot || true
-            docker compose build --no-cache
-            docker compose up -d
+            docker builder prune -af || true
+            docker image prune -af || true
+            docker compose build --no-cache --pull
+            docker compose up -d --force-recreate
       
       # 5. Очистка Docker образов после успешного деплоя
       - name: Cleanup Docker images
