@@ -41,5 +41,5 @@ jobs:
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             cd ~/banner_bot
-            docker-compose down
-            docker-compose up --build -d
+            docker compose down
+            docker compose up --build -d
