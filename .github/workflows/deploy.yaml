@@ -1,105 +1,45 @@
 name: Deploy Telegram Bot to VPS
 
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-text
-steps:
-  # 1) Получаем код
-  - name: Checkout code
-    uses: actions/checkout@v4
+    steps:
+      # 1. Скачиваем исходный код
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  # 2) Создаём .env из секретов
-  - name: Create .env file
-    run: |
-      echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
-      echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
-      echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
-
-  # 3) Гарантируем, что целевая папка на VPS существует
-  - name: Ensure target directory exists on VPS
-    uses: appleboy/ssh-action@v1.0.3
-    with:
-      host: ${{ secrets.VPS_HOST }}
-      username: ${{ secrets.VPS_USERNAME }}
-      key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-      port: ${{ secrets.VPS_PORT }} # укажите секрет, если порт нестандартный
-      script_stop: true
-      script: |
-        mkdir -p ~/banner_bot
-
-  # 4) Копируем файлы проекта на VPS
-  - name: Copy project files to VPS
-    uses: appleboy/scp-action@v0.1.7
-    with:
-      host: ${{ secrets.VPS_HOST }}
-      username: ${{ secrets.VPS_USERNAME }}
-      key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-      port: ${{ secrets.VPS_PORT }}
-      # перечисляем источники через запятую
-      source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
-      target: "~/banner_bot"
-      overwrite: true
-      # опционально: включить детальные логи при отладке
-      # debug: true
-      # если используете fingerprint сервера:
-      # fingerprint: ${{ secrets.VPS_FINGERPRINT }}
-
-  # 5) Деплой: собираем и запускаем контейнеры
-  - name: Deploy on VPS (Docker Compose up)
-    uses: appleboy/ssh-action@v1.0.3
-    with:
-      host: ${{ secrets.VPS_HOST }}
-      username: ${{ secrets.VPS_USERNAME }}
-      key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-      port: ${{ secrets.VPS_PORT }}
-      script_stop: true
-      script: |
-        set -euxo pipefail
-        cd ~/banner_bot
-
-        # Убедиться, что docker установлен
-        if ! command -v docker >/dev/null 2>&1; then
-          echo "Docker not found. Installing..."
-          if [ -f /etc/debian_version ]; then
-            sudo apt-get update
-            sudo apt-get install -y ca-certificates curl gnupg
-            sudo install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-            echo \
-              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-              $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
-              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-            sudo apt-get update
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-            sudo usermod -aG docker $USER || true
-          else
-            echo "Please install Docker manually for your distro."
-            exit 1
-          fi
-        fi
-
-        # Убедиться, что docker compose доступен (v2 как подкоманда)
-        if ! docker compose version >/dev/null 2>&1; then
-          echo "Docker Compose v2 not found. Installing plugin..."
-          if [ -f /etc/debian_version ]; then
-            sudo apt-get update
-            sudo apt-get install -y docker-compose-plugin
-          fi
-        fi
-
-        # Останавливаем старые контейнеры (если есть)
-        docker compose down || true
-
-        # Запускаем в фоне с пересборкой
-        docker compose up -d --build
-
-        # Опционально: показать логи нескольких последних строк
-        docker compose ps
-        docker compose logs --tail=100 || true
+      # 2. Создаем .env файл
+      - name: Create .env file
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
+          echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
+          echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
+      
+      # 3. Копируем файлы проекта на VPS
+      - name: Copy project files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Все файлы в одну строку через запятую ---
+          source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
+          target: "~/banner_bot" 
+          
+      # 4. Подключаемся к VPS и перезапускаем Docker
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/banner_bot
+            docker-compose down
+            docker-compose up --build -d
