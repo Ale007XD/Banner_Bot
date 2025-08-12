@@ -10,6 +10,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await display_menu(update, context)
     return MAIN_MENU
 
+# Display main menu with current settings
+async def display_menu(update, context: ContextTypes.DEFAULT_TYPE):
+    """Формирует и показывает главное меню с кнопками основных этапов."""
+    config = context.user_data.get('config', {'postprint': POSTPRINT_NONE})
+    
+    # Формируем кнопки основных этапов на основе констант BTN_*
+    buttons = [
+        [BTN_ADD_TEXT],
+        [BTN_CHANGE_COLOR],
+        [BTN_SCALE_TEXT],
+        [BTN_SELECT_POSTPRINT],
+        [BTN_GENERATE_PREVIEW],
+        [BTN_SHOW_STATS]
+    ]
+    
+    # Показываем текущие настройки пользователя
+    current_postprint = config.get('postprint', POSTPRINT_NONE)
+    text_lines_count = len(config.get('text_lines', []))
+    
+    menu_text = f"🎨 **Создание баннера**\n\n📝 Строк текста: {text_lines_count}\n🔩 Постпечать: {current_postprint}\n\nВыберите действие:"
+    
+    if hasattr(update, 'message') and update.message:
+        await update.message.reply_text(menu_text, reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True), parse_mode='Markdown')
+    else:
+        # Для случаев когда update - это объект сообщения
+        await update.reply_text(menu_text, reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True), parse_mode='Markdown')
+
 # --- НОВЫЕ ФУНКЦИИ для масштабирования ---
 async def ask_which_line_to_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text_items = context.user_data.get('config', {}).get('text_lines', [])
@@ -62,22 +89,39 @@ async def save_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     config = context.user_data.get('config', {})
-    if not all(k in config for k in ['width', 'height', 'bg_color', 'text_color', 'font', 'text_lines', 'postprint']):
-        await update.message.reply_text("❌ Пожалуйста, заполните все параметры.", reply_markup=ReplyKeyboardRemove())
+    
+    if not config.get('text_lines'):
+        await update.message.reply_text("❌ Сначала добавьте текст!")
         await display_menu(update.message, context)
         return MAIN_MENU
     
-    await update.message.reply_text("Создаю превью...", reply_markup=ReplyKeyboardRemove())
-    preview_image = create_preview_jpeg(config)
-    await update.message.reply_photo(
-        photo=preview_image, 
-        caption="Все верно?", 
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Да, создать PDF", callback_data="generate_pdf")],
-            [InlineKeyboardButton("❌ Нет, вернуться в меню", callback_data="back_to_menu")]
-        ])
-    )
-    return PREVIEW_CONFIRM
+    await update.message.reply_text("⏳ Создаю превью...")
+    
+    try:
+        preview_data = create_preview_jpeg(config)
+        
+        # Создаем inline-клавиатуру с исправленными callback_data
+        keyboard = [
+            [
+                InlineKeyboardButton("📄 Создать PDF", callback_data=CALLBACK_GENERATE_PDF),
+                InlineKeyboardButton("🔙 В меню", callback_data=CALLBACK_BACK_TO_MENU)
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Исправленный вызов reply_photo (убрана лишняя закрывающая скобка)
+        await update.message.reply_photo(
+            photo=preview_data,
+            caption="✅ Превью готово! Выберите действие:",
+            reply_markup=reply_markup
+        )
+        
+        return PREVIEW_STATE
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка создания превью: {str(e)}")
+        await display_menu(update.message, context)
+        return MAIN_MENU
 
 async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -130,6 +174,7 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_caption(caption=f"✅ Готово! Ваш заказ №{order_number} отправлен в канал.")
     context.user_data['config'] = {'postprint': POSTPRINT_NONE}
+    
     await query.message.reply_text("\nВы можете создать следующий баннер:")
     await display_menu(query.message, context)
     return MAIN_MENU
