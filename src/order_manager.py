@@ -1,7 +1,11 @@
 import json
 from datetime import datetime
+from filelock import FileLock
 
 COUNTER_FILE_PATH = "order_counter.json"
+LOCK_FILE_PATH = "order_counter.lock"
+
+lock = FileLock(LOCK_FILE_PATH)
 
 def _read_counter():
     """Читает данные счетчика из файла."""
@@ -18,24 +22,26 @@ def _write_counter(data):
 
 def get_next_order_number() -> str:
     """Генерирует следующий номер заказа и обновляет статистику."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    today_formatted = datetime.now().strftime("%d%m")
-    
-    data = _read_counter()
-    
-    # Обновляем счетчик за сегодня
-    daily_count = data.get("daily", {}).get(today_str, 0) + 1
-    if "daily" not in data:
-        data["daily"] = {}
-    data["daily"][today_str] = daily_count
+    with lock:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_formatted = datetime.now().strftime("%d%m")
 
-    # Обновляем общий счетчик
-    data["total_ever"] = data.get("total_ever", 0) + 1
+        data = _read_counter()
 
-    _write_counter(data)
+        # Обновляем счетчик за сегодня
+        daily_count = data.get("daily", {}).get(today_str, 0) + 1
+        if "daily" not in data:
+            data["daily"] = {}
 
-    order_number = f"ДА-{today_formatted}-{daily_count:03d}"
-    return order_number
+        data["daily"][today_str] = daily_count
+
+        # Обновляем общий счетчик
+        data["total_ever"] = data.get("total_ever", 0) + 1
+
+        _write_counter(data)
+
+        order_number = f"ДА-{today_formatted}-{daily_count:03d}"
+        return order_number
 
 def get_stats() -> str:
     """Возвращает строку со статистикой."""
