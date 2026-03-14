@@ -1,9 +1,20 @@
 name: Deploy Telegram Bot to VPS
 
 on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Выберите ветку для деплоя'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+        - main
+        - refactor
+        - develop
+        - hot-refactor
   push:
-    branches:
-      - main
+    branches: [ main, refactor ]
 
 jobs:
   deploy:
