@@ -2,8 +2,7 @@ name: Deploy Telegram Bot to VPS
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, refactor ]
 
 jobs:
   deploy:
