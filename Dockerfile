@@ -1,21 +1,34 @@
-# Используем легковесный базовый образ Python
 FROM python:3.10-slim
 
-# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Копируем файл с зависимостями
-COPY requirements.txt .
+# Устанавливаем системные зависимости:
+# ghostscript — конвертация PDF в PDF/X с CMYK-профилем и шрифтами в кривых
+# curl — для скачивания ICC-профиля
+# libgl1, libglib2.0-0 — зависимости Pillow
+RUN apt-get update && apt-get install -y \
+    ghostscript \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем зависимости, не кешируя их
+# Скачиваем стандартный ICC-профиль ISOcoated_v2_300 (офсетная печать, Europe)
+# Это самый распространённый профиль, принимаемый типографиями
+RUN mkdir -p /profiles && \
+    curl -L -o /profiles/ISOcoated_v2_300_eci.icc \
+    "https://www.color.org/registry/ISOcoated_v2_300_eci.icc" || \
+    echo "WARNING: ICC profile download failed, will use fallback"
+
+# Копируем зависимости и устанавливаем их отдельным слоем (кэширование)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем папку со шрифтами
+# Копируем исходный код и шрифты
+COPY src/ ./src/
 COPY fonts/ ./fonts/
 
-# Копируем исходный код приложения
-COPY src/ ./src/
+# Директория для хранения заказов (монтируется как volume в docker-compose)
+RUN mkdir -p /app/orders
 
-# ----------------- ИЗМЕНЕНИЕ ЗДЕСЬ -----------------
-# Запускаем src как модуль, чтобы относительные импорты работали корректно
 CMD ["python", "-m", "src.main"]
