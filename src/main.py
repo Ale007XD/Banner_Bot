@@ -6,7 +6,7 @@ from .config import TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_ID
 from .bot_handlers import start, cancel, stats_command, last_order_command
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def main() -> None:
