@@ -7,10 +7,6 @@ on:
         description: 'Ветка для деплоя'
         required: true
         default: 'main'
-        type: choice
-        options:
-          - main
-          - develop
   push:
     branches: [ main ]
 
@@ -21,8 +17,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref_name }}
 
       - name: Create .env file
         run: |
@@ -30,31 +24,33 @@ jobs:
           echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
           echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
 
-      # Копируем исходники на VPS через SCP
-      # Примечание: используем только SCP (без git pull на сервере).
-      # Это единственный источник истины при деплое.
       - name: Copy project files to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.7.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          source: "src,fonts,.env,Dockerfile,docker-compose.yml,requirements.txt"
+          # Добавили assets/profiles в список копирования
+          source: "src,fonts,assets,Dockerfile,docker-compose.yml,requirements.txt,.env"
           target: "~/banner_bot"
 
       - name: Restart Docker container on VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             cd ~/banner_bot
-            # Убеждаемся, что папка для заказов существует (volume)
-            mkdir -p orders
-            # Создаём пустой счётчик если его нет
+            # Создаем необходимые папки для монтирования (volumes)
+            mkdir -p orders bot_data
+            
+            # Создаем счётчик, если его нет
             [ -f order_counter.json ] || echo '{"total_ever": 0, "daily": {}}' > order_counter.json
+            
+            # Сборка и перезапуск
             docker compose down
-            docker compose up --build -d
-            echo "✅ Деплой завершён"
+            docker compose build
+            docker compose up -d
+            echo "✅ Деплой завершён. Контейнер запущен в фоне."
             
