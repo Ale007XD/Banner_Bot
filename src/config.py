@@ -3,27 +3,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------------------------------------------------------------------------
 # Telegram credentials
-# ---------------------------------------------------------------------------
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
-    raise ValueError(
-        "Необходимо задать переменные окружения TELEGRAM_BOT_TOKEN "
-        "и TELEGRAM_CHANNEL_ID в файле .env"
-    )
+    raise ValueError("ОШИБКА: TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID обязательны!")
 
-# ---------------------------------------------------------------------------
 # Paths
-# ---------------------------------------------------------------------------
-# ICC-профиль для PDF/X (офсетная печать, стандарт типографий Европы/России)
 ICC_PROFILE_PATH = os.getenv("ICC_PROFILE_PATH", "/profiles/ISOcoated_v2_300_eci.icc")
-
-ORDERS_DIR = "orders"
-COUNTER_FILE_PATH = "order_counter.json"
+ORDERS_DIR = "/app/orders" # Исправлено на абсолютный путь внутри контейнера
+COUNTER_FILE_PATH = "/app/order_counter.json"
 
 # ---------------------------------------------------------------------------
 # Banner parameters
