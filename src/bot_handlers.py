@@ -1,10 +1,3 @@
-"""
-bot_handlers.py
-~~~~~~~~~~~~~~~
-Обработчики команд и сообщений Telegram-бота.
-FSM (ConversationHandler) управляет диалогом настройки баннера.
-"""
-
 import logging
 import os
 from functools import wraps
@@ -72,7 +65,9 @@ logger = logging.getLogger(__name__)
 def admin_only(func):
     """Декоратор: разрешает выполнение только администратору."""
     @wraps(func)
-    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+    async def wrapped(
+        update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs
+    ):
         if str(update.effective_user.id) != ADMIN_TELEGRAM_ID:
             await update.message.reply_text("⛔️ У вас нет прав для этой команды.")
             return
@@ -82,7 +77,10 @@ def admin_only(func):
 
 def _config_complete(config: dict) -> bool:
     """Проверяет, заполнены ли все обязательные поля."""
-    required = ["width", "height", "bg_color", "text_color", "font", "text_lines", "postprint"]
+    required = [
+        "width", "height", "bg_color", "text_color",
+        "font", "text_lines", "postprint",
+    ]
     return all(k in config and config[k] for k in required)
 
 
@@ -112,7 +110,6 @@ async def display_menu(message, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             lines.append(row("🔴", label, "не задан"))
 
-    # Текстовые строки
     text_items = config.get("text_lines")
     if text_items:
         parts = [
@@ -123,14 +120,12 @@ async def display_menu(message, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         lines.append(f"🔴 {BTN_TEXT_LINES}: не задан")
 
-    # Постпечать
     postprint = config.get("postprint")
     if postprint:
         lines.append(row("🟢", BTN_POSTPRINT, postprint))
     else:
         lines.append(row("🔴", BTN_POSTPRINT, "не задана"))
 
-    # Клавиатура
     buttons = [
         [BTN_WIDTH, BTN_HEIGHT],
         [BTN_BG_COLOR, BTN_TEXT_COLOR],
@@ -144,7 +139,9 @@ async def display_menu(message, context: ContextTypes.DEFAULT_TYPE) -> None:
     buttons.append([BTN_CANCEL])
 
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-    await message.reply_text("\n".join(lines), reply_markup=keyboard, parse_mode="HTML")
+    await message.reply_text(
+        "\n".join(lines), reply_markup=keyboard, parse_mode="HTML"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,12 +149,16 @@ async def display_menu(message, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 @admin_only
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def stats_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     await update.message.reply_text(get_stats(), parse_mode="MarkdownV2")
 
 
 @admin_only
-async def last_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def last_order_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     last_order_path = context.bot_data.get("last_order_path")
     if last_order_path and os.path.exists(last_order_path):
         filename = os.path.basename(last_order_path)
@@ -167,7 +168,9 @@ async def last_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode="MarkdownV2",
         )
     else:
-        await update.message.reply_text("Заказов с последнего перезапуска ещё не было.")
+        await update.message.reply_text(
+            "Заказов с последнего перезапуска ещё не было."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +198,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def back_to_main_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     await display_menu(update.message, context)
     return MAIN_MENU
 
@@ -204,7 +209,9 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # Ширина / Высота
 # ---------------------------------------------------------------------------
 
-async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_width(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     await update.message.reply_text(
         f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):",
         reply_markup=ReplyKeyboardRemove(),
@@ -212,7 +219,9 @@ async def ask_for_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return AWAIT_WIDTH
 
 
-async def save_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_width(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
         value = int(update.message.text)
         if not (MIN_DIMENSION <= value <= MAX_DIMENSION):
@@ -226,7 +235,9 @@ async def save_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return MAIN_MENU
 
 
-async def ask_for_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_height(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     await update.message.reply_text(
         f"Введите высоту в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):",
         reply_markup=ReplyKeyboardRemove(),
@@ -234,7 +245,9 @@ async def ask_for_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return AWAIT_HEIGHT
 
 
-async def save_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_height(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
         value = int(update.message.text)
         if not (MIN_DIMENSION <= value <= MAX_DIMENSION):
@@ -252,7 +265,9 @@ async def save_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 # Цвет фона / текста
 # ---------------------------------------------------------------------------
 
-async def ask_for_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_color(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     context.user_data["color_target"] = update.message.text
     color_buttons = [
         f"{details['emoji']} {name}" for name, details in COLORS.items()
@@ -265,9 +280,10 @@ async def ask_for_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return AWAIT_BG_COLOR
 
 
-async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_color(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
-        # Формат кнопки: "🔴 Красный" — берём всё после первого пробела
         color_name = update.message.text.split(" ", 1)[1]
         if color_name not in COLORS:
             raise ValueError
@@ -277,7 +293,9 @@ async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         elif target == BTN_TEXT_COLOR:
             context.user_data["config"]["text_color"] = color_name
     except (ValueError, IndexError):
-        await update.message.reply_text("❌ Пожалуйста, нажмите на кнопку с цветом.")
+        await update.message.reply_text(
+            "❌ Пожалуйста, нажмите на кнопку с цветом."
+        )
     await display_menu(update.message, context)
     return MAIN_MENU
 
@@ -286,14 +304,14 @@ async def save_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # Шрифт
 # ---------------------------------------------------------------------------
 
-async def ask_for_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_font(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     await update.message.reply_text(
         "Готовлю превью шрифтов...", reply_markup=ReplyKeyboardRemove()
     )
     preview = create_font_preview_image()
-    await update.message.reply_photo(
-        photo=preview, caption="Доступные шрифты:"
-    )
+    await update.message.reply_photo(photo=preview, caption="Доступные шрифты:")
     font_names = list(FONTS.keys())
     keyboard = [font_names[i:i + 2] for i in range(0, len(font_names), 2)]
     await update.message.reply_text(
@@ -303,7 +321,9 @@ async def ask_for_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return AWAIT_FONT_CHOICE
 
 
-async def save_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_font(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     if update.message.text in FONTS:
         context.user_data["config"]["font"] = update.message.text
     else:
@@ -316,7 +336,9 @@ async def save_font(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # Ввод текста (строки)
 # ---------------------------------------------------------------------------
 
-async def ask_for_line_count(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_line_count(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     context.user_data["config"]["text_lines"] = []
     await update.message.reply_text(
         "Сколько строк текста будет на баннере?",
@@ -336,7 +358,8 @@ async def save_line_count_and_ask_text(
             raise ValueError
         context.user_data["config"]["line_count"] = count
         await update.message.reply_text(
-            f"Введите текст для строки 1:", reply_markup=ReplyKeyboardRemove()
+            "Введите текст для строки 1:",
+            reply_markup=ReplyKeyboardRemove(),
         )
         return AWAIT_TEXT_LINES
     except (ValueError, TypeError):
@@ -353,8 +376,9 @@ async def save_text_and_continue(
         {"text": update.message.text, "scale": 1.0}
     )
     if len(config["text_lines"]) < config.get("line_count", 0):
+        next_num = len(config["text_lines"]) + 1
         await update.message.reply_text(
-            f"Принято. Введите текст для строки {len(config['text_lines']) + 1}:"
+            f"Принято. Введите текст для строки {next_num}:"
         )
         return AWAIT_TEXT_LINES
     else:
@@ -372,7 +396,8 @@ async def ask_which_line_to_edit(
 ) -> int:
     items = context.user_data.get("config", {}).get("text_lines", [])
     buttons = [
-        [f"Строка {i + 1}: «{item['text'][:20]}»"] for i, item in enumerate(items)
+        [f"Строка {i + 1}: «{item['text'][:20]}»"]
+        for i, item in enumerate(items)
     ] + [[BTN_BACK]]
     await update.message.reply_text(
         "Какую строку изменить?",
@@ -381,9 +406,10 @@ async def ask_which_line_to_edit(
     return AWAIT_LINE_CHOICE_FOR_EDIT
 
 
-async def ask_for_new_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_new_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
-        # Формат: "Строка N: «текст»"
         line_index = int(update.message.text.split(":")[0].split(" ")[1]) - 1
         context.user_data["edit_line_index"] = line_index
         await update.message.reply_text(
@@ -395,10 +421,14 @@ async def ask_for_new_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return AWAIT_LINE_CHOICE_FOR_EDIT
 
 
-async def save_edited_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_edited_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     idx = context.user_data.pop("edit_line_index", None)
     if idx is not None:
-        context.user_data["config"]["text_lines"][idx]["text"] = update.message.text
+        context.user_data["config"]["text_lines"][idx]["text"] = (
+            update.message.text
+        )
     await display_menu(update.message, context)
     return MAIN_MENU
 
@@ -422,11 +452,18 @@ async def ask_which_line_to_scale(
     return AWAIT_LINE_FOR_SCALE
 
 
-async def ask_for_percentage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_percentage(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
         line_index = int(update.message.text.split(" ")[1]) - 1
         context.user_data["scale_line_index"] = line_index
-        buttons = [["100%", "90%"], ["80%", "70%"], ["60%", "50%"], [BTN_BACK]]
+        buttons = [
+            ["100%", "90%"],
+            ["80%", "70%"],
+            ["60%", "50%"],
+            [BTN_BACK],
+        ]
         await update.message.reply_text(
             f"Выберите масштаб для строки {line_index + 1}:",
             reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True),
@@ -436,7 +473,9 @@ async def ask_for_percentage(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return AWAIT_LINE_FOR_SCALE
 
 
-async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_scale(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     try:
         idx = context.user_data.pop("scale_line_index")
         scale_value = int(update.message.text.replace("%", "")) / 100.0
@@ -444,7 +483,9 @@ async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             raise ValueError
         context.user_data["config"]["text_lines"][idx]["scale"] = scale_value
     except (KeyError, IndexError, ValueError):
-        await update.message.reply_text("❌ Выберите масштаб из предложенных кнопок.")
+        await update.message.reply_text(
+            "❌ Выберите масштаб из предложенных кнопок."
+        )
     await display_menu(update.message, context)
     return MAIN_MENU
 
@@ -453,7 +494,9 @@ async def save_scale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # Постпечатная обработка
 # ---------------------------------------------------------------------------
 
-async def ask_for_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def ask_for_postprint(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     keyboard = [[key] for key in POSTPRINT_OPTIONS.keys()]
     await update.message.reply_text(
         "Выберите постпечатную обработку:",
@@ -462,7 +505,9 @@ async def ask_for_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return AWAIT_POSTPRINT
 
 
-async def save_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_postprint(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     if update.message.text in POSTPRINT_OPTIONS:
         context.user_data["config"]["postprint"] = update.message.text
     else:
@@ -475,7 +520,9 @@ async def save_postprint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # Генерация превью и PDF
 # ---------------------------------------------------------------------------
 
-async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def generate_preview(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
     config = context.user_data.get("config", {})
 
     if not _config_complete(config):
@@ -485,7 +532,9 @@ async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await display_menu(update.message, context)
         return MAIN_MENU
 
-    await update.message.reply_text("Создаю превью...", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+        "Создаю превью...", reply_markup=ReplyKeyboardRemove()
+    )
 
     try:
         preview = create_preview_jpeg(config)
@@ -500,8 +549,14 @@ async def generate_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         caption="Всё верно?",
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("✅ Сгенерировать PDF", callback_data="generate_pdf"),
-                InlineKeyboardButton("❌ Назад", callback_data="cancel_generation"),
+                InlineKeyboardButton(
+                    "✅ Сгенерировать PDF",
+                    callback_data="generate_pdf",
+                ),
+                InlineKeyboardButton(
+                    "❌ Назад",
+                    callback_data="cancel_generation",
+                ),
             ]
         ]),
     )
@@ -513,7 +568,9 @@ async def generate_pdf_callback(
 ) -> int:
     query = update.callback_query
     await query.answer()
-    await query.edit_message_caption(caption="⏳ Создаю PDF для типографии...")
+    await query.edit_message_caption(
+        caption="⏳ Создаю PDF для типографии..."
+    )
 
     config = context.user_data["config"]
     user = update.effective_user
@@ -522,7 +579,9 @@ async def generate_pdf_callback(
         pdf_buf = create_final_pdf(config)
     except Exception as exc:
         logger.exception("Ошибка генерации PDF")
-        await query.edit_message_caption(caption=f"❌ Ошибка генерации PDF:\n{exc}")
+        await query.edit_message_caption(
+            caption=f"❌ Ошибка генерации PDF:\n{exc}"
+        )
         await display_menu(query.message, context)
         return MAIN_MENU
 
@@ -530,15 +589,13 @@ async def generate_pdf_callback(
     postprint_code = POSTPRINT_OPTIONS.get(config["postprint"], "XX")
     filename = f"order_{order_number}_{postprint_code}.pdf"
 
-    # Сохраняем файл на диск
     os.makedirs(ORDERS_DIR, exist_ok=True)
     file_path = os.path.join(ORDERS_DIR, filename)
     with open(file_path, "wb") as f:
         f.write(pdf_buf.getbuffer())
     context.bot_data["last_order_path"] = file_path
 
-    # Отправляем в канал
-    pdf_buf.seek(0)  # ← обязательно сбрасываем позицию перед отправкой
+    pdf_buf.seek(0)
     user_link = f"[{user.first_name}](tg://user?id={user.id})"
     channel_caption = (
         f"✅ *Новый заказ №{order_number}*\n\n"
@@ -561,12 +618,4 @@ async def generate_pdf_callback(
         caption=f"✅ Готово! Заказ №{order_number} отправлен в канал."
     )
 
-    # Сбрасываем конфиг для следующего заказа
-    context.user_data["config"] = {"postprint": POSTPRINT_NONE}
-    await query.message.reply_text("Вы можете создать следующий баннер:")
-    await display_menu(query.message, context)
-    return MAIN_MENU
-
-
-async def back_to_menu_callback(
-    update: Update, cont
+    context.user_data["config"] =
