@@ -6,12 +6,18 @@ services:
       - .env
     restart: unless-stopped
     volumes:
-      # Персистентное хранение заказов и счётчика между перезапусками
+      # Хранилище готовых PDF-файлов
       - ./orders:/app/orders
+      
+      # Персистентное хранение состояний FSM и сессий пользователей
+      - ./bot_data:/app/data
+      
+      # Счётчик заказов (убедитесь, что файл существует локально)
       - ./order_counter.json:/app/order_counter.json
-    # Опционально: ограничение ресурсов
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: 512M
-    
+
+    # Ограничение ресурсов (рекомендуется для VPS)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          
