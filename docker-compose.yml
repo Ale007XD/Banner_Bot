@@ -1,12 +1,17 @@
-version: '3.8'
-
 services:
   telegram-bot:
-    # Собирать образ из Dockerfile в текущей директории
     build: .
     container_name: pdf_banner_bot
-    # Передаем переменные окружения из файла .env
     env_file:
       - .env
-    # Перезапускать контейнер в случае сбоя
     restart: unless-stopped
+    volumes:
+      # Персистентное хранение заказов и счётчика между перезапусками
+      - ./orders:/app/orders
+      - ./order_counter.json:/app/order_counter.json
+    # Опционально: ограничение ресурсов
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 512M
+    
