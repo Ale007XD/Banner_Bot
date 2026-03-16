@@ -513,6 +513,16 @@ async def generate_pdf_callback(
 ) -> int:
     query = update.callback_query
     await query.answer()
+
+    # ПРОВЕРКА ICC-ПРОФИЛЯ ПЕРЕД ГЕНЕРАЦИЕЙ
+    icc_path = "/profiles/ISOcoated_v2_300_eci.icc"
+    if not os.path.exists(icc_path) or os.path.getsize(icc_path) < 100000:
+        logger.error(f"Критическая ошибка: ICC профиль отсутствует или поврежден ({icc_path})")
+        await query.edit_message_caption(
+            caption="❌ Ошибка конфигурации сервера: ICC-профиль не найден. Свяжитесь с админом."
+        )
+        return MAIN_MENU
+
     await query.edit_message_caption(caption="⏳ Создаю PDF для типографии...")
 
     config = context.user_data["config"]
@@ -538,7 +548,7 @@ async def generate_pdf_callback(
     context.bot_data["last_order_path"] = file_path
 
     # Отправляем в канал
-    pdf_buf.seek(0)  # ← обязательно сбрасываем позицию перед отправкой
+    pdf_buf.seek(0)
     user_link = f"[{user.first_name}](tg://user?id={user.id})"
     channel_caption = (
         f"✅ *Новый заказ №{order_number}*\n\n"
@@ -557,22 +567,4 @@ async def generate_pdf_callback(
         parse_mode="Markdown",
     )
 
-    await query.edit_message_caption(
-        caption=f"✅ Готово! Заказ №{order_number} отправлен в канал."
-    )
-
-    # Сбрасываем конфиг для следующего заказа
-    context.user_data["config"] = {"postprint": POSTPRINT_NONE}
-    await query.message.reply_text("Вы можете создать следующий баннер:")
-    await display_menu(query.message, context)
-    return MAIN_MENU
-
-
-async def back_to_menu_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> int:
-    query = update.callback_query
-    await query.answer()
-    await query.delete_message()
-    await display_menu(update.effective_message, context)
-    return MAIN_MENU
+    await query.edit_message_captio
