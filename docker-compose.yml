@@ -6,16 +6,9 @@ services:
       - .env
     restart: unless-stopped
     volumes:
-      # Хранилище готовых PDF-файлов
       - ./orders:/app/orders
-      
-      # Персистентное хранение состояний FSM и сессий пользователей
       - ./bot_data:/app/data
-      
-      # Счётчик заказов (убедитесь, что файл существует локально)
       - ./order_counter.json:/app/order_counter.json
-
-    # Ограничение ресурсов (рекомендуется для VPS)
     deploy:
       resources:
         limits:
