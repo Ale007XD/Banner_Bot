@@ -2,33 +2,27 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости:
-# ghostscript — конвертация PDF в PDF/X с CMYK-профилем и шрифтами в кривых
-# curl — для скачивания ICC-профиля
-# libgl1, libglib2.0-0 — зависимости Pillow
+# Устанавливаем системные зависимости
+# libgl1, libglib2.0-0 нужны для Pillow
 RUN apt-get update && apt-get install -y \
     ghostscript \
-    curl \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Скачиваем стандартный ICC-профиль ISOcoated_v2_300 (офсетная печать, Europe)
-# Это самый распространённый профиль, принимаемый типографиями
-RUN mkdir -p /profiles && \
-    curl -L -o /profiles/ISOcoated_v2_300_eci.icc \
-    "https://www.color.org/registry/ISOcoated_v2_300_eci.icc" || \
-    echo "WARNING: ICC profile download failed, will use fallback"
+# Создаем необходимые директории
+RUN mkdir -p /profiles /app/orders /app/data
 
-# Копируем зависимости и устанавливаем их отдельным слоем (кэширование)
+# Копируем ICC-профиль из репозитория (скачайте его заранее в assets/profiles/)
+COPY assets/profiles/ISOcoated_v2_300_eci.icc /profiles/ISOcoated_v2_300_eci.icc
+
+# Установка зависимостей
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем исходный код и шрифты
+# Копируем код и ресурсы
 COPY src/ ./src/
 COPY fonts/ ./fonts/
 
-# Директория для хранения заказов (монтируется как volume в docker-compose)
-RUN mkdir -p /app/orders
-
+# Запуск через модуль
 CMD ["python", "-m", "src.main"]
