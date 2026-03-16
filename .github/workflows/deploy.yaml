@@ -2,18 +2,12 @@ name: Deploy Telegram Bot to VPS
 
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Ветка для деплоя'
-        required: true
-        default: 'main'
   push:
     branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,32 +19,26 @@ jobs:
           echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
 
       - name: Copy project files to VPS
-        uses: appleboy/scp-action@v1.7.0
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          # Добавили assets/profiles в список копирования
           source: "src,fonts,assets,Dockerfile,docker-compose.yml,requirements.txt,.env"
           target: "~/banner_bot"
 
       - name: Restart Docker container on VPS
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script: |
             cd ~/banner_bot
-            # Создаем необходимые папки для монтирования (volumes)
             mkdir -p orders bot_data
-            
-            # Создаем счётчик, если его нет
             [ -f order_counter.json ] || echo '{"total_ever": 0, "daily": {}}' > order_counter.json
-            
-            # Сборка и перезапуск
             docker compose down
             docker compose build
             docker compose up -d
-            echo "✅ Деплой завершён. Контейнер запущен в фоне."
+            echo "✅ Деплой завершён"
             
