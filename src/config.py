@@ -8,6 +8,9 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
+# Монетизация
+STARS_PRICE = int(os.getenv("STARS_PRICE", "50"))
+
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
     raise ValueError("ОШИБКА: TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL_ID обязательны!")
 
