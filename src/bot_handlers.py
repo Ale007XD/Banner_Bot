@@ -222,9 +222,14 @@ async def back_to_main_menu(
 async def ask_for_width(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
+    from .template_handlers import build_sizes_keyboard
     await update.message.reply_text(
-        f"Введите ширину в мм (от {MIN_DIMENSION} до {MAX_DIMENSION}):",
+        "Выберите типовой формат или введите размер вручную:",
         reply_markup=ReplyKeyboardRemove(),
+    )
+    await update.message.reply_text(
+        "Типовые форматы наружной рекламы:",
+        reply_markup=build_sizes_keyboard(),
     )
     return AWAIT_WIDTH
 
@@ -284,6 +289,11 @@ async def ask_for_color(
     await update.message.reply_text(
         "Выберите цвет:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+    )
+    from .template_handlers import build_color_schemes_keyboard
+    await update.message.reply_text(
+        "🎨 Или выберите готовое сочетание:",
+        reply_markup=build_color_schemes_keyboard(),
     )
     return AWAIT_BG_COLOR
 
@@ -362,9 +372,14 @@ async def save_line_count_and_ask_text(
         if not 1 <= count <= 4:
             raise ValueError
         context.user_data["config"]["line_count"] = count
+        from .template_handlers import build_slogan_categories_keyboard
         await update.message.reply_text(
             "Введите текст для строки 1:",
             reply_markup=ReplyKeyboardRemove(),
+        )
+        await update.message.reply_text(
+            "💡 Или выберите готовый слоган:",
+            reply_markup=build_slogan_categories_keyboard(),
         )
         return AWAIT_TEXT_LINES
     except (ValueError, TypeError):
