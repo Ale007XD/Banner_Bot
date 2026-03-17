@@ -15,8 +15,11 @@ from telegram.ext import (
     MessageHandler,
     PicklePersistence,
     filters,
+    PreCheckoutQueryHandler,
 )
 from telegram.ext.filters import Regex
+
+from .payment_handlers import pre_checkout_handler, successful_payment_handler
 
 from .bot_handlers import (
     ask_for_color,
@@ -187,6 +190,8 @@ def main() -> None:
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(CommandHandler("stats",     stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
 
