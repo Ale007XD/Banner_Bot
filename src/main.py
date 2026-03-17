@@ -193,9 +193,8 @@ def main() -> None:
 
     application.add_handler(conv_handler)
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
-    # Обработчик успешного платежа оставлен снаружи conv_handler
-    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))    application.add_handler(CommandHandler("stats",     stats_command))
-    application.add_handler(CommandHandler("lastorder", last_order_command))
+    # Глобальный обработчик для SUCCESSFUL_PAYMENT убран, так как теперь он внутри состояния PREVIEW_CONFIRM
+    application.add_handler(CommandHandler("stats",     stats_command))    application.add_handler(CommandHandler("lastorder", last_order_command))
 
     logger.info("Бот запущен.")
     application.run_polling(
