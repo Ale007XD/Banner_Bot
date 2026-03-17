@@ -73,6 +73,7 @@ async def send_pdf_invoice(
         prices=[
             LabeledPrice(label="PDF-файл", amount=STARS_PRICE)
         ],
+        provider_token=""
         # photo_url можно добавить позже (превью баннера)
     )
     logger.info("Инвойс отправлен: tg_id=%s order=%s stars=%s", tg_id, order_number, STARS_PRICE)
