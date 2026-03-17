@@ -1,6 +1,5 @@
 """
 main.py
-~~~~~~~
 Точка входа. PicklePersistence для сохранения FSM между перезапусками.
 Webhook сбрасывается при старте — исключает конфликт с другими процессами.
 """
@@ -19,7 +18,10 @@ from telegram.ext import (
 )
 from telegram.ext.filters import Regex
 
-from .payment_handlers import pre_checkout_handler, successful_payment_handler
+from .payment_handlers import (
+    pre_checkout_handler,
+    successful_payment_handler,
+)
 
 from .bot_handlers import (
     ask_for_color,
@@ -45,8 +47,7 @@ from .bot_handlers import (
     save_line_count_and_ask_text,
     save_postprint,
     save_scale,
-    save_text_and_continue,
-    save_width,
+    save_text_and_continue,    save_width,
     start,
     stats_command,
 )
@@ -95,8 +96,7 @@ def main() -> None:
     persistence = PicklePersistence(filepath=PERSISTENCE_FILE)
 
     application = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
+        Application.builder()        .token(TELEGRAM_BOT_TOKEN)
         .persistence(persistence)
         .build()
     )
@@ -145,8 +145,7 @@ def main() -> None:
             ],
             AWAIT_POSTPRINT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_postprint),
-            ],
-            AWAIT_LINE_CHOICE_FOR_EDIT: [
+            ],            AWAIT_LINE_CHOICE_FOR_EDIT: [
                 MessageHandler(Regex(f"^{BTN_BACK}$"), back_to_main_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND, ask_for_new_text
@@ -176,6 +175,9 @@ def main() -> None:
                 CallbackQueryHandler(
                     back_to_menu_callback, pattern="^cancel_generation$"
                 ),
+                MessageHandler(
+                    filters.SUCCESSFUL_PAYMENT, successful_payment_handler
+                ),
             ],
         },
         fallbacks=[
@@ -191,8 +193,8 @@ def main() -> None:
 
     application.add_handler(conv_handler)
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
-    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
-    application.add_handler(CommandHandler("stats",     stats_command))
+    # Обработчик успешного платежа оставлен снаружи conv_handler
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))    application.add_handler(CommandHandler("stats",     stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
 
     logger.info("Бот запущен.")
