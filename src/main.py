@@ -54,6 +54,14 @@ from .bot_handlers import (
     start,
     stats_command,
 )
+from .template_handlers import (
+    tpl_color_cancel,
+    tpl_color_chosen,
+    tpl_size_chosen,
+    tpl_slogan_cancel,
+    tpl_slogan_category,
+    tpl_slogan_chosen,
+)
 from .config import (
     AWAIT_BG_COLOR,
     AWAIT_FONT_CHOICE,
@@ -125,12 +133,15 @@ def main() -> None:
                 MessageHandler(Regex(f"^{BTN_GENERATE}$"),   generate_preview),
             ],
             AWAIT_WIDTH: [
+                CallbackQueryHandler(tpl_size_chosen,  pattern=r"^tpl_size:"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_width),
             ],
             AWAIT_HEIGHT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_height),
             ],
             AWAIT_BG_COLOR: [
+                CallbackQueryHandler(tpl_color_chosen,  pattern=r"^tpl_color:"),
+                CallbackQueryHandler(tpl_color_cancel,  pattern=r"^tpl_color_cancel$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_color),
             ],
             AWAIT_FONT_CHOICE: [
@@ -143,6 +154,9 @@ def main() -> None:
                 ),
             ],
             AWAIT_TEXT_LINES: [
+                CallbackQueryHandler(tpl_slogan_category, pattern=r"^tpl_scat:"),
+                CallbackQueryHandler(tpl_slogan_chosen,   pattern=r"^tpl_slogan:"),
+                CallbackQueryHandler(tpl_slogan_cancel,   pattern=r"^tpl_slogan_cancel$"),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     save_text_and_continue,
