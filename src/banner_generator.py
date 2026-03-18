@@ -488,7 +488,7 @@ def create_font_preview_image() -> io.BytesIO:
     font_items = list(FONTS.items())
     img_w = 1200
     padding = 40
-    name_size = 28        # размер подписи-названия шрифта
+    name_size = 38        # размер подписи-названия шрифта
     example_size = 52     # размер строки-примера
     gap = 10              # отступ между названием и примером
     separator = 24        # отступ между блоками шрифтов
@@ -497,7 +497,7 @@ def create_font_preview_image() -> io.BytesIO:
     bg_color = (245, 245, 245)
     name_color = (120, 120, 120)
     example_color = (20, 20, 20)
-    example_text = "Шрифт  Продажа  ПРОДАЖА  0123-45-67-89"
+    example_text = "Продаётся  ПРОДАЖА  0123-45-67-89"
 
     # --- предварительный расчёт высоты ---
     # используем fallback-шрифт для оценки высот
