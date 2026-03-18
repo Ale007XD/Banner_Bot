@@ -154,20 +154,24 @@ def create_preview_jpeg(data: dict) -> io.BytesIO:
 
     details = _calculate_layout(text_items, safe_w, safe_h, measure_fn=pillow_measure)
 
-    # Вертикальное центрирование
-    total_h = sum(d["height"] * 1.2 for d in details)
-    y = safe_px + (safe_h - total_h) / 2
+    # Слотовое вертикальное распределение:
+    # safe zone делится на n равных слотов, каждая строка центрируется в своём слоте.
+    # Строки равномерно заполняют всю высоту от safe_px до h_px - safe_px.
+    n = len(details)
+    slot_h = safe_h / n if n > 0 else safe_h
 
-    for d in details:
+    for i, d in enumerate(details):
         fnt = ImageFont.truetype(font_path, int(d["font_size"]))
         bbox = draw.textbbox((0, 0), d["text"], font=fnt)
         text_w = bbox[2] - bbox[0]
         x = safe_px + (safe_w - text_w) / 2
+        # Центр слота → верхняя граница строки
+        slot_top = safe_px + slot_h * i
+        y = slot_top + (slot_h - d["height"]) / 2
         # Компенсируем bbox[0] и bbox[1] — offset глифа относительно origin.
         # Без этого каждая строка рисуется на bbox[1] пикселей ниже расчётной
         # позиции, что при нескольких строках накапливается в заметный сдвиг.
         draw.text((x - bbox[0], y - bbox[1]), d["text"], font=fnt, fill=text_rgb)
-        y += d["height"] * 1.2
 
     # --- Вотермарка ---
     # Текст поверх JPEG-превью. PDF платный — вотермарка мотивирует к покупке.
@@ -331,28 +335,30 @@ def _create_raw_pdf(data: dict) -> io.BytesIO:
         d["font_size_pt"] = d["font_size"] * mm
         d["height_pt"] = d["height"] * mm
 
-    # Вертикальное центрирование внутри safe zone — зеркало Pillow:
-    #   Pillow:     y      = safe_px  + (safe_h  - total_h)  / 2   (от верха вниз)
-    #   ReportLab:  y_cursor = h_pt - safe_top - (safe_h_pt - total_h_pt) / 2
-    # y_cursor = верхняя граница блока текста (от неё baseline = y_cursor - height).
-    total_h_pt = sum(d["height_pt"] * 1.2 for d in details)
-    safe_pt = SAFE_ZONE_MM * mm          # отступ safe zone в pt (все стороны)
+    # Слотовое вертикальное распределение — зеркало Pillow.
+    # ReportLab: y=0 внизу страницы, поэтому слоты считаем снизу вверх.
+    #   safe_h_pt делится на n равных слотов.
+    #   Строка i (0 = верхняя) → слот (n-1-i) снизу.
+    safe_pt = SAFE_ZONE_MM * mm
     safe_h_pt = safe_h_mm * mm
-    y_cursor = h_pt - safe_pt - (safe_h_pt - total_h_pt) / 2
+    n = len(details)
+    slot_h_pt = safe_h_pt / n if n > 0 else safe_h_pt
 
-    for d in details:
+    for i, d in enumerate(details):
         size_pt = d["font_size_pt"]
         text_w = pdfmetrics.stringWidth(d["text"], font_name, size_pt)
         x = safe_pt + (safe_w_mm * mm - text_w) / 2
-        y_pos = y_cursor - d["height_pt"]
+
+        # Нижняя граница слота i (в координатах ReportLab от низа страницы)
+        slot_bottom = safe_pt + slot_h_pt * (n - 1 - i)
+        # Центрируем строку в слоте: baseline = slot_bottom + (slot_h - height) / 2
+        y_pos = slot_bottom + (slot_h_pt - d["height_pt"]) / 2
 
         c.setFont(font_name, size_pt)
         to = c.beginText(x, y_pos)
         to.setFont(font_name, size_pt)
         to.textLine(d["text"])
         c.drawText(to)
-
-        y_cursor -= d["height_pt"] * 1.2
 
     # --- OutputIntent: встраиваем ICC-профиль до c.save() ---
     # Это ключевое исправление: GS получает PDF уже с OutputIntent
