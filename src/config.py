@@ -80,10 +80,11 @@ POSTPRINT_OPTIONS = {
 # Fonts: display name → path inside container
 # ---------------------------------------------------------------------------
 FONTS = {
-    "Golos Text": "fonts/GolosText-Regular.ttf",
-    "Tenor Sans": "fonts/TenorSans-Regular.ttf",
-    "Fira Sans":  "fonts/FiraSans-Regular.ttf",
-    "Igra Sans":  "fonts/IgraSans-Regular.ttf",
+    "1. Golos Text":     "fonts/GolosText-Regular.ttf",
+    "2. Tenor Sans":     "fonts/TenorSans-Regular.ttf",
+    "3. Fira Sans":      "fonts/FiraSans-Regular.ttf",
+    "4. Fira Sans Cond": "fonts/FiraSans-Condensed-Bold.ttf",
+    "5. PT Sans Narrow": "fonts/PTSans-Narrow-Bold.ttf",
 }
 
 # ---------------------------------------------------------------------------

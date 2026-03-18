@@ -494,7 +494,7 @@ def create_font_preview_image() -> io.BytesIO:
     bg_color = (240, 240, 240)
     name_color = (0, 0, 0)
     example_color = (80, 80, 80)
-    example_text = "Продажа 123-45-67"
+    example_text = "1. Название  Продажа  ПРОДАЖА  123-45-67-890"
     font_size = 40
 
     image = Image.new("RGB", (img_w, img_h), bg_color)
