@@ -332,7 +332,7 @@ async def ask_for_font(
         photo=preview, caption="Доступные шрифты:"
     )
     font_names = list(FONTS.keys())
-    keyboard = [[name] for name in font_names]
+    keyboard = [font_names[i:i + 2] for i in range(0, len(font_names), 2)]
     await update.message.reply_text(
         "Выберите шрифт:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
