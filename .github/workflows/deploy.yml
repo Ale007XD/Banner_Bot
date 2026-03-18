@@ -1,0 +1,116 @@
+name: Deploy Telegram Bot to VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate secrets
+        run: |
+          for secret in TELEGRAM_BOT_TOKEN TELEGRAM_CHANNEL_ID ADMIN_TELEGRAM_ID; do
+            val=$(printenv $secret || true)
+            if [ -z "${!secret}" ]; then
+              echo "ОШИБКА: $secret не задан"
+              exit 1
+            fi
+          done
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ADMIN_TELEGRAM_ID: ${{ secrets.ADMIN_TELEGRAM_ID }}
+
+      - name: Create .env file
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" > .env
+          echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
+          echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
+
+      - name: Copy project files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          source: "src,fonts,assets,Dockerfile,docker-compose.yml,requirements.txt,.env"
+          target: "~/banner_bot"
+          # Удаляем файлы на сервере которых нет в репо — исключаем
+          # накопление устаревших модулей между деплоями
+          rm: true
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ~/banner_bot
+
+            # Необходимые директории и счётчик
+            mkdir -p orders bot_data
+            [ -f order_counter.json ] || \
+              echo '{"total_ever": 0, "daily": {}}' > order_counter.json
+
+            # Сбрасываем Webhook
+            BOT_TOKEN=$(grep TELEGRAM_BOT_TOKEN .env | cut -d= -f2)
+            curl -s "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=true" | \
+              python3 -c "import sys,json; r=json.load(sys.stdin); print('Webhook сброшен:', r.get('result'))"
+
+            # Останавливаем контейнер
+            docker compose down
+
+            # Чистим образы — гарантируем пересборку без кэша
+            docker rmi banner_bot-telegram-bot 2>/dev/null || true
+            docker image prune -f
+
+            # Пересборка и запуск
+            docker compose build --no-cache
+            docker compose up -d
+
+            # Ждём пока контейнер поднимется (до 30 сек)
+            echo "Ожидаем запуска контейнера..."
+            for i in $(seq 1 6); do
+              sleep 5
+              STATUS=$(docker inspect --format='{{.State.Status}}' pdf_banner_bot 2>/dev/null || echo "not found")
+              echo "  попытка $i: $STATUS"
+              if [ "$STATUS" = "running" ]; then
+                break
+              fi
+              if [ $i -eq 6 ]; then
+                echo "ОШИБКА: контейнер не запустился за 30 секунд"
+                docker compose logs --tail=30
+                exit 1
+              fi
+            done
+
+            # Проверяем что бот успел сделать первый getUpdates с новым
+            # allowed_updates (PTB обновляет список при старте polling)
+            echo "Проверяем allowed_updates..."
+            sleep 5
+            ALLOWED=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo" | \
+              python3 -c "
+            import sys, json
+            r = json.load(sys.stdin)
+            updates = r.get('result', {}).get('allowed_updates', [])
+            print(' '.join(updates))
+            ")
+            echo "  allowed_updates: $ALLOWED"
+            if echo "$ALLOWED" | grep -q "pre_checkout_query"; then
+              echo "✅ pre_checkout_query присутствует — платёжный флоу активен"
+            else
+              echo "⚠️  pre_checkout_query отсутствует — проверь run_polling в main.py"
+              # Не падаем — бот работает, но платежи могут не проходить
+            fi
+
+            echo ""
+            echo "=== Деплой завершён ==="
+            echo "Логи (последние 30 строк):"
+            docker compose logs --tail=30
