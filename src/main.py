@@ -14,11 +14,10 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     PicklePersistence,
+    PreCheckoutQueryHandler,
     filters,
 )
 from telegram.ext.filters import Regex
-
-from telegram.ext import PreCheckoutQueryHandler
 
 from .payment_handlers import (
     pre_checkout_handler,
@@ -205,14 +204,20 @@ def main() -> None:
             MessageHandler(Regex(f"^{BTN_CANCEL}$"), cancel),
             CommandHandler("cancel", cancel),
         ],
-        # Важно: name нужен для корректного восстановления из PicklePersistence
+        # name нужен для корректного восстановления из PicklePersistence
         name="banner_conversation",
         persistent=True,
         per_message=False,
     )
 
+    # ВАЖНО: PreCheckoutQueryHandler регистрируется в group=-1.
+    # Это гарантирует обработку ДО того как ConversationHandler (group=0)
+    # получит апдейт. PreCheckoutQuery должен быть подтверждён в течение
+    # 10 секунд — любая задержка или блокировка в group=0 приводит к
+    # BOT_PRECHECKOUT_TIMEOUT и отмене платежа со стороны Telegram.
+    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler), group=-1)
+
     application.add_handler(conv_handler)
-    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(CommandHandler("stats",     stats_command))
     application.add_handler(CommandHandler("lastorder", last_order_command))
 
