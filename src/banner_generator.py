@@ -487,37 +487,75 @@ def create_final_pdf(data: dict) -> io.BytesIO:
 def create_font_preview_image() -> io.BytesIO:
     font_items = list(FONTS.items())
     img_w = 1200
-    line_h = 100
-    padding = 50
-    img_h = len(font_items) * line_h + 2 * padding
+    padding = 40
+    name_size = 28        # размер подписи-названия шрифта
+    example_size = 52     # размер строки-примера
+    gap = 10              # отступ между названием и примером
+    separator = 24        # отступ между блоками шрифтов
+    divider_color = (200, 200, 200)
 
-    bg_color = (240, 240, 240)
-    name_color = (0, 0, 0)
-    example_color = (80, 80, 80)
-    example_text = "1. Название  Продажа  ПРОДАЖА  123-45-67-890"
-    font_size = 40
+    bg_color = (245, 245, 245)
+    name_color = (120, 120, 120)
+    example_color = (20, 20, 20)
+    example_text = "Шрифт  Продажа  ПРОДАЖА  0123-45-67-89"
+
+    # --- предварительный расчёт высоты ---
+    # используем fallback-шрифт для оценки высот
+    fallback = ImageFont.load_default()
+    block_heights = []
+    for name, path in font_items:
+        try:
+            name_fnt = ImageFont.truetype(path, name_size)
+            ex_fnt = ImageFont.truetype(path, example_size)
+        except Exception:
+            name_fnt = fallback
+            ex_fnt = fallback
+        nb = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), name, font=name_fnt)
+        eb = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), example_text, font=ex_fnt)
+        block_heights.append((nb[3] - nb[1]) + gap + (eb[3] - eb[1]))
+
+    img_h = (
+        padding
+        + sum(block_heights)
+        + separator * (len(font_items) - 1)
+        + padding
+    )
 
     image = Image.new("RGB", (img_w, img_h), bg_color)
     draw = ImageDraw.Draw(image)
 
     y = padding
-    for name, path in font_items:
+    for i, (name, path) in enumerate(font_items):
         if not os.path.exists(path):
             logger.warning("Шрифт для превью не найден: %s", path)
-            y += line_h
+            y += block_heights[i] + separator
             continue
         try:
-            fnt = ImageFont.truetype(path, font_size)
-            bbox = draw.textbbox((0, 0), name, font=fnt)
-            text_y = y + (line_h - (bbox[3] - bbox[1])) / 2
-            draw.text((padding, text_y), name, font=fnt, fill=name_color)
+            name_fnt = ImageFont.truetype(path, name_size)
+            ex_fnt = ImageFont.truetype(path, example_size)
 
-            ex_bbox = draw.textbbox((0, 0), example_text, font=fnt)
-            ex_x = img_w - padding - (ex_bbox[2] - ex_bbox[0])
-            draw.text((ex_x, text_y), example_text, font=fnt, fill=example_color)
+            # Название шрифта (мелко, серым)
+            nb = draw.textbbox((0, 0), name, font=name_fnt)
+            draw.text((padding - nb[0], y - nb[1]), name, font=name_fnt, fill=name_color)
+            name_h = nb[3] - nb[1]
+
+            # Пример текста (крупно, тёмным)
+            eb = draw.textbbox((0, 0), example_text, font=ex_fnt)
+            ey = y + name_h + gap
+            draw.text((padding - eb[0], ey - eb[1]), example_text, font=ex_fnt, fill=example_color)
+            example_h = eb[3] - eb[1]
+
         except Exception as exc:
             logger.warning("Ошибка отрисовки шрифта %s: %s", name, exc)
-        y += line_h
+            name_h = block_heights[i] // 2
+            example_h = block_heights[i] // 2
+
+        y += name_h + gap + example_h + separator
+
+        # Разделитель между блоками
+        if i < len(font_items) - 1:
+            line_y = y - separator // 2
+            draw.line([(padding, line_y), (img_w - padding, line_y)], fill=divider_color, width=1)
 
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=95)
