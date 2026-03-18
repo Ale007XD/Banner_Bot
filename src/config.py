@@ -82,8 +82,8 @@ POSTPRINT_OPTIONS = {
 FONTS = {
     "1. Golos Text":     "fonts/GolosText-Regular.ttf",
     "2. Tenor Sans":     "fonts/TenorSans-Regular.ttf",
-    "3. Fira Sans Cond": "fonts/FiraSans-Condensed-Bold.ttf",
-    "4. PT Sans Narrow": "fonts/PTSans-Narrow-Bold.ttf",
+    "3. Fira Sans Cond": "fonts/FiraSansCondensed-ExtraBold.ttf",
+    "4. PT Sans Narrow": "fonts/PTSansNarrow-Bold.ttf",
 }
 
 # ---------------------------------------------------------------------------

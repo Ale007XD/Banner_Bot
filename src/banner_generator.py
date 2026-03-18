@@ -486,10 +486,10 @@ def create_final_pdf(data: dict) -> io.BytesIO:
 # ---------------------------------------------------------------------------
 def create_font_preview_image() -> io.BytesIO:
     font_items = list(FONTS.items())
-    img_w = 1200
+    img_w = 900
     padding = 40
     name_size = 38        # размер подписи-названия шрифта
-    example_size = 52     # размер строки-примера
+    example_size = 44     # размер строки-примера
     gap = 10              # отступ между названием и примером
     separator = 24        # отступ между блоками шрифтов
     divider_color = (200, 200, 200)
