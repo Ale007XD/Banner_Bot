@@ -2,23 +2,17 @@
 banner_generator.py
 ~~~~~~~~~~~~~~~~~~~
 Генерация баннеров в двух форматах:
-  • JPEG-превью  — через Pillow (RGB, быстро, для Telegram)
+  • JPEG-превью  — через Pillow (RGB, быстро, для сайта)
   • PDF для печати — через ReportLab (промежуточный) + Ghostscript (финальный):
-      - PDF/A-1b совместимый
+      - PDF/X-1a совместимый
       - CMYK с ICC-профилем ISOcoated_v2_300
       - Все шрифты переведены в кривые (outlines)
 
 Двухшаговая схема:
     ReportLab → tmp_raw.pdf → Ghostscript → print_ready.pdf → BytesIO
 
-Решение UnsupportedDeviceColorSpace:
-    OutputIntent с ICC-профилем встраивается на этапе ReportLab через
-    прямую инъекцию в PDFCatalog (_catalog.__NoDefault__ + PDFArray).
-    ReportLab не поддерживает OutputIntents нативно, но PDFCatalog.format()
-    читает все атрибуты через getattr — достаточно добавить атрибут и
-    зарегистрировать его в __NoDefault__ / __Refs__ на экземпляре.
-    Ghostscript получает raw.pdf уже с OutputIntent и сохраняет его при
-    PDF/A-1b конвертации без конфликта цветовых пространств.
+Локальная копия для web-контейнера.
+Не зависит от бота — импортирует только из web/api/services/config.py.
 """
 
 import io
@@ -29,7 +23,7 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfdoc, pdfmetrics
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
@@ -38,7 +32,7 @@ from .config import COLORS, FONTS, ICC_PROFILE_PATH, SAFE_ZONE_MM
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Регистрация шрифтов в ReportLab (при импорте модуля)
+# Регистрация шрифтов в ReportLab (при первом вызове)
 # ---------------------------------------------------------------------------
 _fonts_registered = False
 
@@ -83,6 +77,8 @@ def _calculate_layout(
       - ограничения по высоте (вертикальный fit)
 
     measure_fn(text, size) → (width, height)
+    Единицы size и возвращаемых значений определяются вызывающей стороной
+    (мм для PDF-ветки, px для Pillow-превью).
     """
     details = []
     for item in text_items:
@@ -107,7 +103,7 @@ def _calculate_layout(
             }
         )
 
-    # Вертикальный fit: если не влезает — масштабируем все строки
+    # Вертикальный fit: если суммарная высота не влезает — масштабируем все строки
     total_h = sum(d["height"] * line_spacing_ratio for d in details)
     if total_h > safe_height and total_h > 0:
         fit = safe_height / total_h
@@ -122,6 +118,18 @@ def _calculate_layout(
 # JPEG-превью (Pillow, RGB)
 # ---------------------------------------------------------------------------
 def create_preview_jpeg(data: dict) -> io.BytesIO:
+    """
+    Создаёт JPEG-превью баннера для отображения на сайте.
+
+    data: {
+        "width": int (мм),
+        "height": int (мм),
+        "bg_color": str,
+        "text_color": str,
+        "text_lines": [{"text": str, "scale": float}, ...],
+        "font": str,
+    }
+    """
     width_mm: int = data["width"]
     height_mm: int = data["height"]
     bg_color_name: str = data["bg_color"]
@@ -131,8 +139,9 @@ def create_preview_jpeg(data: dict) -> io.BytesIO:
 
     _ensure_fonts_registered()
 
-    # Масштаб: 1 пиксель = 1 мм (достаточно для превью в Telegram)
-    scale = 1.0
+    # Масштаб для превью: 1 пиксель = 1 мм, но ограничиваем по ширине
+    max_preview_width = 1200
+    scale = min(1.0, max_preview_width / width_mm)
     w_px = int(width_mm * scale)
     h_px = int(height_mm * scale)
     safe_px = SAFE_ZONE_MM * scale
@@ -173,40 +182,6 @@ def create_preview_jpeg(data: dict) -> io.BytesIO:
         # позиции, что при нескольких строках накапливается в заметный сдвиг.
         draw.text((x - bbox[0], y - bbox[1]), d["text"], font=fnt, fill=text_rgb)
 
-    # --- Вотермарка ---
-    # Текст поверх JPEG-превью. PDF платный — вотермарка мотивирует к покупке.
-    # Размер: ~4% от меньшей стороны (читаемо, но не перекрывает контент).
-    wm_text = "Сделано в @BannerPrintBot"
-    wm_size = max(12, int(min(w_px, h_px) * 0.04))
-    try:
-        # Пробуем системный шрифт; если нет — деградируем до default
-        wm_font = ImageFont.truetype("fonts/GolosText-Regular.ttf", wm_size)
-    except (OSError, IOError):
-        wm_font = ImageFont.load_default()
-
-    wm_bbox = draw.textbbox((0, 0), wm_text, font=wm_font)
-    wm_w = wm_bbox[2] - wm_bbox[0]
-    wm_h = wm_bbox[3] - wm_bbox[1]
-
-    # Позиция: правый нижний угол с отступом safe_px / 2
-    margin = int(safe_px / 2)
-    wm_x = w_px - wm_w - margin - wm_bbox[0]
-    wm_y = h_px - wm_h - margin - wm_bbox[1]
-
-    # Полупрозрачная подложка для читаемости на любом фоне.
-    # Pillow RGBA composite: рисуем overlay отдельно, накладываем на RGB.
-    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    ov_draw = ImageDraw.Draw(overlay)
-
-    pad = 6
-    ov_draw.rectangle(
-        [wm_x - pad, wm_y - pad, wm_x + wm_w + pad, wm_y + wm_h + pad],
-        fill=(0, 0, 0, 120),
-    )
-    ov_draw.text((wm_x, wm_y), wm_text, font=wm_font, fill=(255, 255, 255, 220))
-
-    image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
-
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=90)
     buf.seek(0)
@@ -214,63 +189,7 @@ def create_preview_jpeg(data: dict) -> io.BytesIO:
 
 
 # ---------------------------------------------------------------------------
-# Встраивание OutputIntent в PDF через инъекцию в PDFCatalog
-# ---------------------------------------------------------------------------
-def _embed_output_intent(c: canvas.Canvas, icc_path: str) -> None:
-    """
-    Встраивает OutputIntent с ICC-профилем в PDF через прямую инъекцию
-    в PDFCatalog экземпляра ReportLab Canvas.
-
-    ReportLab не поддерживает OutputIntents нативно. PDFCatalog.format()
-    собирает словарь через getattr по спискам __Defaults__, __NoDefault__
-    и __Refs__. Добавляем 'OutputIntents' в эти списки на экземпляре
-    каталога (не на классе — не затрагиваем другие PDF) и задаём атрибут
-    с PDFArray из одного объекта OutputIntent.
-
-    Структура согласно ISO 19005-1, секция 6.2.2:
-        Catalog.OutputIntents → array → OutputIntent dict → DestOutputProfile stream
-    """
-    try:
-        with open(icc_path, "rb") as f:
-            icc_data = f.read()
-    except OSError as exc:
-        logger.warning("Не удалось прочитать ICC-профиль: %s", exc)
-        return
-
-    doc = c._doc
-
-    # ICC stream: N=4 (CMYK), Alternate=/DeviceCMYK
-    # Используем ZCompress=False: некоторые версии GS некорректно читают
-    # сжатый ICC stream внутри PDF/A при конвертации
-    icc_dict = pdfdoc.PDFDictionary({"N": 4, "Alternate": "/DeviceCMYK"})
-    icc_stream = pdfdoc.PDFStream(
-        dictionary=icc_dict,
-        content=icc_data,
-        filters=None,  # без сжатия — максимальная совместимость с GS
-    )
-    icc_ref = doc.Reference(icc_stream)
-
-    # OutputIntent объект
-    oi_dict = pdfdoc.PDFDictionary({
-        "Type": "/OutputIntent",
-        "S": "/GTS_PDFA1",
-        "OutputConditionIdentifier": pdfdoc.PDFString("ISOcoated_v2_300_eci"),
-        "Info": pdfdoc.PDFString("ISOcoated v2 300% (ECI)"),
-        "DestOutputProfile": icc_ref,
-    })
-    oi_ref = doc.Reference(oi_dict)
-
-    # Инъекция в каталог: добавляем в списки на экземпляре, не на классе
-    cat = doc._catalog
-    cat.__NoDefault__ = list(cat.__NoDefault__) + ["OutputIntents"]
-    cat.__Refs__ = list(cat.__Refs__) + ["OutputIntents"]
-    cat.OutputIntents = pdfdoc.PDFArray([oi_ref])
-
-    logger.debug("OutputIntent встроен: %s", icc_path)
-
-
-# ---------------------------------------------------------------------------
-# Шаг 1: промежуточный PDF через ReportLab (DeviceCMYK + OutputIntent)
+# Шаг 1: промежуточный PDF через ReportLab (DeviceCMYK)
 # ---------------------------------------------------------------------------
 def _create_raw_pdf(data: dict) -> io.BytesIO:
     width_mm: int = data["width"]
@@ -293,8 +212,7 @@ def _create_raw_pdf(data: dict) -> io.BytesIO:
     safe_h_mm = float(height_mm - 2 * SAFE_ZONE_MM)
 
     buf = io.BytesIO()
-    # PDF 1.4 обязателен для PDF/A-1b (GS 10.x отвергает 1.3 с политикой =1)
-    c = canvas.Canvas(buf, pagesize=(w_pt, h_pt), pdfVersion=(1, 4))
+    c = canvas.Canvas(buf, pagesize=(w_pt, h_pt))
 
     # --- Фон ---
     bg_cmyk = COLORS[bg_color_name]["cmyk"]
@@ -360,17 +278,6 @@ def _create_raw_pdf(data: dict) -> io.BytesIO:
         to.textLine(d["text"])
         c.drawText(to)
 
-    # --- OutputIntent: встраиваем ICC-профиль до c.save() ---
-    # Это ключевое исправление: GS получает PDF уже с OutputIntent
-    # и сохраняет его при PDF/A-1b конвертации без конфликта цветовых пространств
-    if os.path.exists(ICC_PROFILE_PATH):
-        _embed_output_intent(c, ICC_PROFILE_PATH)
-    else:
-        logger.warning(
-            "ICC-профиль не найден: %s — OutputIntent не будет встроен в raw PDF",
-            ICC_PROFILE_PATH,
-        )
-
     c.showPage()
     c.save()
     buf.seek(0)
@@ -378,49 +285,35 @@ def _create_raw_pdf(data: dict) -> io.BytesIO:
 
 
 # ---------------------------------------------------------------------------
-# Шаг 2: постобработка через Ghostscript → PDF/A-1b
-#
-# PDF/A-1b выбран намеренно (не 1a):
-#   - 1a требует Tagged PDF (MarkInfo) — избыточно для печатной графики
-#   - 1b требует только встроенные шрифты/профиль — принимают все типографии
-#
-# -dNOSAFER обязателен: без него GS 10.x блокирует чтение любых файлов
-# вне cwd (включая ICC-профили) — Permission denied. Контейнер изолирован,
-# сетевого доступа нет, sandbox GS не нужен.
+# Шаг 2: постобработка через Ghostscript
 # ---------------------------------------------------------------------------
 def _ghostscript_process(input_path: str, output_path: str) -> None:
-    icc_exists = os.path.exists(ICC_PROFILE_PATH)
+    """
+    Запускает Ghostscript для конвертации в печатный PDF.
 
-    if not icc_exists:
-        logger.warning(
-            "ICC-профиль не найден: %s — PDF будет без OutputIntent",
-            ICC_PROFILE_PATH,
-        )
+    Ключевые флаги:
+      -dPDFSETTINGS=/prepress  — настройки для допечатной подготовки
+      -dNoOutputFonts          — все шрифты → кривые (outlines)
+      -sColorConversionStrategy=CMYK — принудительный CMYK
+      -sOutputICCProfile       — встраивает ICC-профиль
+
+    ВАЖНО: вызывается только из ProcessPoolExecutor (CPU-bound операция).
+    Прямой вызов из asyncio event loop запрещён.
+    """
+    icc_exists = os.path.exists(ICC_PROFILE_PATH)
 
     cmd = [
         "gs",
         "-dBATCH",
         "-dNOPAUSE",
-        "-dNOSAFER",   # нужен для чтения ICC-профилей с диска в GS 10.x sandbox
+        "-dNOSAFER",
         "-sDEVICE=pdfwrite",
-
-        # PDF/A-1b
-        "-dPDFA=1",
-        # Policy=2: при несовместимости GS исправляет и продолжает (не падает).
-        # Policy=1 вызывает fatal exit при любом предупреждении — слишком жёстко
-        # для PDF от ReportLab, который может иметь незначительные отклонения.
-        "-dPDFACompatibilityPolicy=2",
-
-        "-dCompatibilityLevel=1.4",
         "-dPDFSETTINGS=/prepress",
-
-        # Шрифты → кривые
-        "-dNoOutputFonts",
-
-        # CMYK: конвертируем всё включая изображения
+        "-dCompatibilityLevel=1.4",    # PDF 1.4 — требование PDF/X-1a
+        "-dNoOutputFonts",             # шрифты в кривые
         "-sColorConversionStrategy=CMYK",
-        "-sColorConversionStrategyForImages=CMYK",
         "-dProcessColorModel=/DeviceCMYK",
+        "-dOverrideICC",
     ]
 
     if icc_exists:
@@ -428,6 +321,12 @@ def _ghostscript_process(input_path: str, output_path: str) -> None:
             f"-sOutputICCProfile={ICC_PROFILE_PATH}",
             f"-sDefaultCMYKProfile={ICC_PROFILE_PATH}",
         ]
+    else:
+        logger.warning(
+            "ICC-профиль не найден по пути %s. "
+            "PDF будет сгенерирован без встроенного профиля.",
+            ICC_PROFILE_PATH,
+        )
 
     cmd += [
         f"-sOutputFile={output_path}",
@@ -437,15 +336,11 @@ def _ghostscript_process(input_path: str, output_path: str) -> None:
     logger.info("Запуск Ghostscript: %s", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
 
-    if result.stdout:
-        logger.info("Ghostscript stdout:\n%s", result.stdout)
-    if result.stderr:
-        logger.info("Ghostscript stderr:\n%s", result.stderr)
-
     if result.returncode != 0:
+        logger.error("Ghostscript stderr: %s", result.stderr)
         raise RuntimeError(
-            f"Ghostscript завершился с ошибкой "
-            f"(код {result.returncode}):\n{result.stderr}"
+            f"Ghostscript завершился с ошибкой (код {result.returncode}):\n"
+            f"{result.stderr[-2000:]}"
         )
 
     logger.info("Ghostscript завершён успешно → %s", output_path)
@@ -459,12 +354,15 @@ def create_final_pdf(data: dict) -> io.BytesIO:
     Возвращает BytesIO с PDF-файлом, готовым для передачи в типографию:
       - CMYK с ICC-профилем ISOcoated_v2_300
       - Шрифты переведены в кривые
-      - PDF/A-1b совместимый формат
+      - PDF/X-совместимый формат
+
+    ВАЖНО: эта функция CPU-bound из-за Ghostscript.
+    Должна вызываться только через ProcessPoolExecutor.
     """
-    # Шаг 1: промежуточный PDF (с OutputIntent внутри)
+    # Шаг 1: промежуточный PDF через ReportLab
     raw_buf = _create_raw_pdf(data)
 
-    # Шаг 2: Ghostscript постобработка
+    # Шаг 2: постобработка Ghostscript
     with tempfile.TemporaryDirectory() as tmpdir:
         raw_path = os.path.join(tmpdir, "raw.pdf")
         out_path = os.path.join(tmpdir, "print_ready.pdf")
@@ -479,85 +377,3 @@ def create_final_pdf(data: dict) -> io.BytesIO:
 
     result_buf.seek(0)
     return result_buf
-
-
-# ---------------------------------------------------------------------------
-# Превью шрифтов для выбора в боте
-# ---------------------------------------------------------------------------
-def create_font_preview_image() -> io.BytesIO:
-    font_items = list(FONTS.items())
-    img_w = 900
-    padding = 40
-    name_size = 38        # размер подписи-названия шрифта
-    example_size = 44     # размер строки-примера
-    gap = 10              # отступ между названием и примером
-    separator = 24        # отступ между блоками шрифтов
-    divider_color = (200, 200, 200)
-
-    bg_color = (245, 245, 245)
-    name_color = (120, 120, 120)
-    example_color = (20, 20, 20)
-    example_text = "Продаётся  ПРОДАЖА  0123-45-67-89"
-
-    # --- предварительный расчёт высоты ---
-    # используем fallback-шрифт для оценки высот
-    fallback = ImageFont.load_default()
-    block_heights = []
-    for name, path in font_items:
-        try:
-            name_fnt = ImageFont.truetype(path, name_size)
-            ex_fnt = ImageFont.truetype(path, example_size)
-        except Exception:
-            name_fnt = fallback
-            ex_fnt = fallback
-        nb = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), name, font=name_fnt)
-        eb = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), example_text, font=ex_fnt)
-        block_heights.append((nb[3] - nb[1]) + gap + (eb[3] - eb[1]))
-
-    img_h = (
-        padding
-        + sum(block_heights)
-        + separator * (len(font_items) - 1)
-        + padding
-    )
-
-    image = Image.new("RGB", (img_w, img_h), bg_color)
-    draw = ImageDraw.Draw(image)
-
-    y = padding
-    for i, (name, path) in enumerate(font_items):
-        if not os.path.exists(path):
-            logger.warning("Шрифт для превью не найден: %s", path)
-            y += block_heights[i] + separator
-            continue
-        try:
-            name_fnt = ImageFont.truetype(path, name_size)
-            ex_fnt = ImageFont.truetype(path, example_size)
-
-            # Название шрифта (мелко, серым)
-            nb = draw.textbbox((0, 0), name, font=name_fnt)
-            draw.text((padding - nb[0], y - nb[1]), name, font=name_fnt, fill=name_color)
-            name_h = nb[3] - nb[1]
-
-            # Пример текста (крупно, тёмным)
-            eb = draw.textbbox((0, 0), example_text, font=ex_fnt)
-            ey = y + name_h + gap
-            draw.text((padding - eb[0], ey - eb[1]), example_text, font=ex_fnt, fill=example_color)
-            example_h = eb[3] - eb[1]
-
-        except Exception as exc:
-            logger.warning("Ошибка отрисовки шрифта %s: %s", name, exc)
-            name_h = block_heights[i] // 2
-            example_h = block_heights[i] // 2
-
-        y += name_h + gap + example_h + separator
-
-        # Разделитель между блоками
-        if i < len(font_items) - 1:
-            line_y = y - separator // 2
-            draw.line([(padding, line_y), (img_w - padding, line_y)], fill=divider_color, width=1)
-
-    buf = io.BytesIO()
-    image.save(buf, format="JPEG", quality=95)
-    buf.seek(0)
-    return buf
