@@ -32,6 +32,22 @@ jobs:
           echo "TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}" >> .env
           echo "ADMIN_TELEGRAM_ID=${{ secrets.ADMIN_TELEGRAM_ID }}" >> .env
 
+      - name: Stop containers and clean folder on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/banner_bot || mkdir -p ~/banner_bot && cd ~/banner_bot
+            
+            # Останавливаем старые контейнеры, чтобы освободить файлы
+            docker compose down || true
+            
+            # Удаляем старые файлы проекта, исключая папки с данными и json-счётчик
+            # Это решает проблему накопления устаревших модулей
+            rm -rf src fonts assets Dockerfile docker-compose.yml requirements.txt .env
+
       - name: Copy project files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -40,9 +56,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           source: "src,fonts,assets,Dockerfile,docker-compose.yml,requirements.txt,.env"
           target: "~/banner_bot"
-          # Удаляем файлы на сервере которых нет в репо — исключаем
-          # накопление устаревших модулей между деплоями
-          rm: true
+          rm: false # Выключено, так как мы почистили файлы на прошлом шаге
 
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
@@ -63,9 +77,6 @@ jobs:
             BOT_TOKEN=$(grep TELEGRAM_BOT_TOKEN .env | cut -d= -f2)
             curl -s "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=true" | \
               python3 -c "import sys,json; r=json.load(sys.stdin); print('Webhook сброшен:', r.get('result'))"
-
-            # Останавливаем контейнер
-            docker compose down
 
             # Чистим образы — гарантируем пересборку без кэша
             docker rmi banner_bot-telegram-bot 2>/dev/null || true
@@ -114,3 +125,4 @@ jobs:
             echo "=== Деплой завершён ==="
             echo "Логи (последние 30 строк):"
             docker compose logs --tail=30
+            
