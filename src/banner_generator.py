@@ -377,3 +377,38 @@ def create_final_pdf(data: dict) -> io.BytesIO:
 
     result_buf.seek(0)
     return result_buf
+
+def create_font_preview_image() -> io.BytesIO:
+    """
+    Создает изображение-превью со списком всех доступных шрифтов для Telegram-бота.
+    """
+    # Параметры изображения
+    width = 800
+    line_height = 60
+    padding = 20
+    # Высота холста зависит от количества шрифтов в словаре FONTS
+    height = line_height * len(FONTS) + padding * 2
+
+    # Создаем белое изображение
+    image = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(image)
+
+    y_offset = padding
+    for font_name, font_path in FONTS.items():
+        try:
+            # Попытка загрузить шрифт для PIL (Pillow)
+            pil_font = ImageFont.truetype(font_path, 40)
+        except Exception as e:
+            logger.error(f"Не удалось загрузить шрифт {font_path} для PIL: {e}")
+            pil_font = ImageFont.load_default()
+        
+        # Отрисовка названия шрифта этим же шрифтом
+        draw.text((padding, y_offset), font_name, font=pil_font, fill="black")
+        y_offset += line_height
+
+    # Сохраняем изображение в байтовый поток для отправки в Telegram
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    buffer.seek(0)
+    
+    return buffer
