@@ -114,6 +114,63 @@ def _calculate_layout(
     return details
 
 
+def _add_watermark(
+    image: Image.Image,
+    text: str = "Сделано в @bannerprintbot",
+) -> Image.Image:
+    """Накладывает полупрозрачный водяной знак по центру внизу превью.
+    
+    Подбирает размер шрифта через бинарный поиск так, чтобы надпись
+    занимала до 75% ширины, но не превышала 10% высоты баннера.
+    """
+    base = image.convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    font_path = FONTS["1. Golos Text"]
+    target_width = int(base.width * 0.75)
+    max_height = max(16, int(base.height * 0.10))
+
+    low = 10
+    high = max(20, min(base.width, base.height))
+    best_size = low
+
+    # O(log2 N) подбор — для разрешения 1200px занимает ~10-11 итераций
+    while low <= high:
+        mid = (low + high) // 2
+        test_font = ImageFont.truetype(font_path, mid)
+        bbox = draw.textbbox((0, 0), text, font=test_font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+
+        if w <= target_width and h <= max_height:
+            best_size = mid
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    font = ImageFont.truetype(font_path, best_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    x = (base.width - text_w) // 2
+    margin_bottom = max(8, int(base.height * 0.025))
+    y = max(0, base.height - text_h - margin_bottom)
+
+    stroke_width = max(1, int(best_size * 0.04))
+    draw.text(
+        (x, y),
+        text,
+        font=font,
+        fill=(255, 255, 255, 160),
+        stroke_width=stroke_width,
+        stroke_fill=(0, 0, 0, 100),
+    )
+
+    return Image.alpha_composite(base, overlay).convert("RGB")
+
+
 # ---------------------------------------------------------------------------
 # JPEG-превью (Pillow, RGB)
 # ---------------------------------------------------------------------------
@@ -181,6 +238,9 @@ def create_preview_jpeg(data: dict) -> io.BytesIO:
         # Без этого каждая строка рисуется на bbox[1] пикселей ниже расчётной
         # позиции, что при нескольких строках накапливается в заметный сдвиг.
         draw.text((x - bbox[0], y - bbox[1]), d["text"], font=fnt, fill=text_rgb)
+
+    # Наложение брендинга строго после завершения отрисовки баннера
+    image = _add_watermark(image)
 
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=90)
