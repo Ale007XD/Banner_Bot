@@ -8,6 +8,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
+
+def is_admin(user_id: int) -> bool:
+    """Админ(ы): ADMIN_TELEGRAM_ID может содержать несколько ID через запятую."""
+    ids = {x.strip() for x in (ADMIN_TELEGRAM_ID or "").split(",") if x.strip()}
+    return str(user_id) in ids
+
 # Монетизация
 STARS_PRICE = int(os.getenv("STARS_PRICE", "50"))
 

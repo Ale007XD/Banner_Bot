@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from telegram import Update, LabeledPrice
 from telegram.ext import ContextTypes
 
+from .banner_generator import create_final_pdf
 from .config import STARS_PRICE
 from .user_db import (
     FUNNEL_PAYMENT_COMPLETED,
@@ -96,6 +97,101 @@ async def pre_checkout_handler(
 
 
 # ---------------------------------------------------------------------------
+# Генерация и доставка PDF (общая для оплаты и админа)
+# ---------------------------------------------------------------------------
+
+async def deliver_pdf(
+    message,
+    context: ContextTypes.DEFAULT_TYPE,
+    tg_id: int,
+    order_number: str,
+    config: dict,
+    postprint_code: str,
+    stars_tx_id: str | None = None,
+    stars: int = 0,
+    is_admin_order: bool = False,
+) -> bool:
+    """
+    Генерирует PDF, сохраняет на диск, отправляет пользователю, пишет
+    delivery_log и уведомляет канал. Возвращает True при успехе.
+    message — объект Message (update.message ИЛИ query.message).
+    """
+    try:
+        pdf_buf = create_final_pdf(config)
+    except Exception as exc:
+        logger.exception("Ошибка генерации PDF: tg_id=%s order=%s", tg_id, order_number)
+        record_delivery(
+            order_number=order_number,
+            tg_id=tg_id,
+            file_hash="0" * 64,
+            stars_tx_id=stars_tx_id,
+            tg_message_id=None,
+            status="failed",
+        )
+        tail = "" if is_admin_order else "\nОбратитесь в поддержку — оплата засчитана."
+        await message.reply_text(f"⚠️ Ошибка генерации PDF: {exc}{tail}")
+        return False
+
+    pdf_bytes = pdf_buf.getvalue()
+    file_hash = compute_file_hash(pdf_bytes)
+    filename = f"order_{order_number}_{postprint_code}.pdf"
+
+    # Сохраняем на диск
+    os.makedirs(ORDERS_DIR, exist_ok=True)
+    file_path = os.path.join(ORDERS_DIR, filename)
+    with open(file_path, "wb") as f:
+        f.write(pdf_bytes)
+    context.bot_data["last_order_path"] = file_path
+
+    # Отправляем пользователю
+    pdf_buf.seek(0)
+    sent_message = await message.reply_document(
+        document=pdf_buf,
+        filename=filename,
+        caption=(
+            f"🖨 Ваш баннер #{order_number} готов к печати.\n"
+            "PDF/A-1, CMYK, ISOcoated_v2_300_eci."
+        ),
+    )
+
+    # Лог доставки (152-ФЗ). Для админа stars_tx_id = NULL
+    record_delivery(
+        order_number=order_number,
+        tg_id=tg_id,
+        file_hash=file_hash,
+        stars_tx_id=stars_tx_id,
+        tg_message_id=sent_message.message_id,
+        status="delivered",
+    )
+
+    # Служебное уведомление в канал — без ПД, только технические данные
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    pay_line = (
+        "🆓 Admin (без оплаты)"
+        if is_admin_order
+        else f"⭐ {stars} Stars  |  tx: {stars_tx_id}"
+    )
+    channel_text = (
+        f"🖨 Заказ №{order_number}\n"
+        f"{pay_line}\n"
+        f"📐 {config['width']}×{config['height']} мм  |  Постпечать: {config['postprint']}\n"
+        f"🎨 Фон: {config['bg_color']}  |  Текст: {config['text_color']}  |  Шрифт: {config['font']}\n"
+        f"🔒 SHA-256: {file_hash[:16]}…\n"
+        f"📨 msg\\_id: {sent_message.message_id}  |  {now_utc}"
+    )
+    await context.bot.send_message(
+        chat_id=TELEGRAM_CHANNEL_ID,
+        text=channel_text,
+        parse_mode="Markdown",
+    )
+    logger.info(
+        "PDF отправлен: tg_id=%s order=%s hash=%.16s… msg_id=%s admin=%s",
+        tg_id, order_number, file_hash, sent_message.message_id, is_admin_order,
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
 # SuccessfulPayment — генерация и отправка PDF
 # ---------------------------------------------------------------------------
 
@@ -109,7 +205,6 @@ async def successful_payment_handler(
     отправляет пользователю и уведомляет служебный канал.
     После отправки вызывает display_menu для продолжения работы.
     """
-    from .banner_generator import create_final_pdf
     from .bot_handlers import display_menu
 
     payment = update.message.successful_payment
@@ -171,80 +266,15 @@ async def successful_payment_handler(
         )
         return
 
-    # Генерация PDF
-    try:
-        pdf_buf = create_final_pdf(config)
-    except Exception as exc:
-        logger.exception("Ошибка генерации PDF: tg_id=%s order=%s", tg_id, order_number)
-        record_delivery(
-            order_number=order_number,
-            tg_id=tg_id,
-            file_hash="0" * 64,
-            stars_tx_id=stars_tx_id,
-            tg_message_id=None,
-            status="failed",
-        )
-        await update.message.reply_text(
-            f"⚠️ Ошибка генерации PDF: {exc}\n"
-            "Обратитесь в поддержку — оплата засчитана."
-        )
+    ok = await deliver_pdf(
+        update.message, context, tg_id, order_number, config, postprint_code,
+        stars_tx_id=stars_tx_id, stars=payment.total_amount,
+    )
+    if not ok:
         return
-
-    pdf_bytes = pdf_buf.getvalue()
-    file_hash = compute_file_hash(pdf_bytes)
-    filename = f"order_{order_number}_{postprint_code}.pdf"
-
-    # Сохраняем на диск
-    os.makedirs(ORDERS_DIR, exist_ok=True)
-    file_path = os.path.join(ORDERS_DIR, filename)
-    with open(file_path, "wb") as f:
-        f.write(pdf_bytes)
-    context.bot_data["last_order_path"] = file_path
-
-    # Отправляем пользователю
-    pdf_buf.seek(0)
-    sent_message = await update.message.reply_document(
-        document=pdf_buf,
-        filename=filename,
-        caption=(
-            f"🖨 Ваш баннер #{order_number} готов к печати.\n"
-            "PDF/A-1, CMYK, ISOcoated_v2_300_eci."
-        ),
-    )
-
-    # Лог доставки (152-ФЗ)
-    record_delivery(
-        order_number=order_number,
-        tg_id=tg_id,
-        file_hash=file_hash,
-        stars_tx_id=stars_tx_id,
-        tg_message_id=sent_message.message_id,
-        status="delivered",
-    )
-
-    # Служебное уведомление в канал — без ПД, только технические данные
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    channel_text = (
-        f"🖨 Заказ №{order_number}\n"
-        f"⭐ {payment.total_amount} Stars  |  tx: {stars_tx_id}\n"
-        f"📐 {config['width']}×{config['height']} мм  |  Постпечать: {config['postprint']}\n"
-        f"🎨 Фон: {config['bg_color']}  |  Текст: {config['text_color']}  |  Шрифт: {config['font']}\n"
-        f"🔒 SHA-256: {file_hash[:16]}…\n"
-        f"📨 msg\\_id: {sent_message.message_id}  |  {now_utc}"
-    )
-    await context.bot.send_message(
-        chat_id=TELEGRAM_CHANNEL_ID,
-        text=channel_text,
-        parse_mode="Markdown",
-    )
 
     # Чистим pending — заказ закрыт
     context.user_data.pop(PENDING_ORDER_KEY, None)
     context.user_data["config"] = {"postprint": POSTPRINT_NONE}
-    logger.info(
-        "PDF отправлен: tg_id=%s order=%s hash=%.16s… msg_id=%s",
-        tg_id, order_number, file_hash, sent_message.message_id,
-    )
-
     # Предлагаем создать новый баннер
     await display_menu(update.message, context)

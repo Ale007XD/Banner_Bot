@@ -47,6 +47,7 @@ from .config import (
     POSTPRINT_NONE,
     POSTPRINT_OPTIONS,
     TELEGRAM_CHANNEL_ID,
+    is_admin,
     AWAIT_BG_COLOR,
     AWAIT_FONT_CHOICE,
     AWAIT_HEIGHT,
@@ -61,7 +62,7 @@ from .config import (
     PREVIEW_CONFIRM,
 )
 from .order_manager import get_next_order_number, get_stats
-from .payment_handlers import send_pdf_invoice
+from .payment_handlers import deliver_pdf, send_pdf_invoice
 from .text_sanitizer import sanitize_and_notify
 from .user_db import (
     FUNNEL_INVOICE_SENT,
@@ -661,6 +662,22 @@ async def generate_pdf_callback(
         "postprint_code": postprint_code,
         "config": config,
     }
+
+    # Админ: генерация без оплаты Stars
+    if is_admin(user.id):
+        await query.edit_message_caption(
+            caption=f"👑 Заказ #{order_number}: админ, без оплаты. Генерирую PDF…"
+        )
+        ok = await deliver_pdf(
+            query.message, context, user.id, order_number, config,
+            postprint_code, is_admin_order=True,
+        )
+        if ok:
+            context.user_data.pop("pending_pdf_order", None)
+            context.user_data["config"] = {"postprint": POSTPRINT_NONE}
+            await display_menu(query.message, context)
+            return MAIN_MENU
+        return PREVIEW_CONFIRM
 
     await query.edit_message_caption(
         caption=(
